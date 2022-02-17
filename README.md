@@ -14,4 +14,4 @@ This library is available on PyPi:
 ```
 pip install casambi-bt
 ```
-Have a look at `src\demo.py` for a small example.
+Have a look at `demo.py` for a small example.
