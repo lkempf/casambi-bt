@@ -234,9 +234,9 @@ class Network:
                 type = UnitControlType[typeStr]
             except KeyError:
                 self._logger.warning(
-                    f"Unsupported control mode {typeStr} in fixture {id}. Skipping"
+                    f"Unsupported control mode {typeStr} in fixture {id}."
                 )
-                continue
+                type = UnitControlType.UNKOWN
 
             controlObj = UnitControl(
                 type,

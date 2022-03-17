@@ -24,6 +24,9 @@ class UnitControlType(Enum):
     ONOFF = 3
     """The unit can be turned on or off."""
 
+    UNKOWN = 99
+    """State isn't implemented. Control saved for debuggin purposes."""
+
 
 @dataclass(frozen=True, repr=True)
 class UnitControl:
@@ -42,6 +45,7 @@ class UnitType:
     :ivar manufacturer: The manufacturer of this unit type.
     :ivar controls: The different types of controls this unit type is capable of.
     """
+
     id: int
     model: str
     manufacturer: str
@@ -64,6 +68,7 @@ class UnitType:
 # TODO: Work with HS instead of RGB internally
 class UnitState:
     """Parsed representation of the state of a unit."""
+
     _dimmer: Optional[int] = None
     _rgb: Optional[Tuple[int, int, int]] = None
     _white: Optional[int] = None
@@ -167,6 +172,7 @@ class Unit:
 
     :ivar unitType: Type of the unit. Determines the capabilities.
     """
+
     _typeId: int
     deviceId: int
     uuid: str
@@ -311,6 +317,9 @@ class Unit:
             elif c.type == UnitControlType.WHITE:
                 scale = UnitState.WHITE_RESOLUTION - c.length
                 self._state.white = cInt << scale
+            elif c.type == UnitControlType.UNKOWN:
+                # Might be useful for implementing more state types
+                _LOGGER.debug(f"Value for unkown control type at {c.offset}: {cInt}")
 
         _LOGGER.debug(f"Parsed {b2a(value)} to {self.state.__repr__()}")
 
@@ -322,6 +331,7 @@ class Scene:
     :ivar sceneId: The id of the scene in the network.
     :ivar name: The name of the scene.
     """
+
     sceneId: int
     name: str
 
@@ -334,6 +344,7 @@ class Group:
     :ivar name: The name of the group.
     :ivar units: A list of units in this group.
     """
+
     groudId: int
     name: str
 
