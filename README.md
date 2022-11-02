@@ -22,6 +22,6 @@ Have a look at `demo.py` for a small example.
 
 If you have problems connecting to the network please check that your network is configured appropriately before creating an issue. The network I test this with is configured as follows (screenshots are for the iOS app but the Android app should look very similar):
 
-[!Gateway settings](/doc/img/gateway.png)
-[!Network settings](/doc/img/network.png)
-[!Performance settings](/doc/img/perf.png)
+![Gateway settings](/doc/img/gateway.png)
+![Network settings](/doc/img/network.png)
+![Performance settings](/doc/img/perf.png)
