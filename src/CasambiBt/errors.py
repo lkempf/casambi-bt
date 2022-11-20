@@ -13,6 +13,9 @@ class ConnectionStateError(CasambiBtError):
     def __init__(
         self, expected: ConnectionState, got: ConnectionState, expl: str | None = None
     ) -> None:
+        self.expected = expected
+        self.got = got
+
         msg = f"Expected state {expected.name}. Current state {got.name}."
         if expl:
             msg += " " + expl

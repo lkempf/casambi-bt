@@ -2,6 +2,7 @@ import logging
 from binascii import b2a_hex as b2a
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Union
 
+from bleak.backends.device import BLEDevice
 from httpx import AsyncClient
 
 from ._client import CasambiClient, ConnectionState, IncommingPacketType
@@ -17,6 +18,7 @@ class Casambi:
     This is the central point of interaction and should be preferred to dealing with the internal components,
     e.g. ``Network`` or ``CasambiClient``, directly.
     """
+
     _casaClient: CasambiClient
     _casaNetwork: Network
     _opContext: OperationsContext
@@ -88,19 +90,27 @@ class Casambi:
         """Check whether there is an active connection to the network."""
         return self._casaClient._connectionState == ConnectionState.AUTHENTICATED
 
-    async def connect(self, addr: str, password: str) -> Awaitable[None]:
+    async def connect(
+        self, addr_or_device: Union[str, BLEDevice], password: str
+    ) -> Awaitable[None]:
         """Connect and authenticate to a network.
 
-        :param addr: The MAC address of the network. Use `discover` to find the address of a network.
+        :param addr: The MAC address of the network or a BLEDevice. Use `discover` to find the address of a network.
         :param password: The password for the network.
         :raises AuthenticationError: The supplied password is invalid.
         :raises ProtocolError: The network did not follow the expected protocol.
         :raises NetworkNotFoundError: No network was found under the supplied address.
         :raises BluetoothNotReadyError: Bluetooth isn't turned on or in a failed state.
         """
+
+        if isinstance(addr_or_device, BLEDevice):
+            addr = addr_or_device.address
+        else:
+            addr = addr_or_device
+
         self._logger.info(f"Trying to connect to casambi network {addr}...")
 
-        self._casaClient = CasambiClient(addr, self._dataCallback)
+        self._casaClient = CasambiClient(addr_or_device, self._dataCallback)
 
         # Retrieve network information
         networkId = await getNetworkIdFromUuid(addr, self._httpClient)
@@ -111,7 +121,10 @@ class Casambi:
                 raise AuthenticationError("Login failed")
         await self._casaNetwork.update()
 
-        # Initiate bluetooth connection
+        await self._connectClient()
+
+    async def _connectClient(self) -> Awaitable[None]:
+        """Initiate the bluetooth connection."""
         await self._casaClient.connect()
         try:
             await self._casaClient.exchangeKey()
@@ -192,7 +205,15 @@ class Casambi:
 
         opPkt = self._opContext.prepareOperation(opcode, targetCode, state)
 
-        await self._casaClient.send(opPkt)
+        try:
+            await self._casaClient.send(opPkt)
+        except ConnectionStateError as exc:
+            if exc.got == ConnectionState.NONE:
+                self._logger.info(f"Trying to reconnect broken connection once.")
+                await self._connectClient()
+                await self._casaClient.send(opPkt)
+            else:
+                raise exc
 
     def _dataCallback(
         self, packetType: IncommingPacketType, data: Dict[str, Any]
@@ -216,7 +237,10 @@ class Casambi:
                         try:
                             h(u)
                         except Exception:
-                            self._logger.error(f"Exception occurred in unitChangedCallback {h}.", exc_info=1)
+                            self._logger.error(
+                                f"Exception occurred in unitChangedCallback {h}.",
+                                exc_info=1,
+                            )
 
             if not found:
                 self._logger.error(
@@ -246,6 +270,8 @@ class Casambi:
         """
         self._unitChangedCallbacks.remove(handler)
         self._logger.info(f"Removed unit changed handler {handler}")
+
+    # TODO: Implement disconnected callback
 
     async def disconnect(self) -> Awaitable[None]:
         """Disconnect from the network."""

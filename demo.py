@@ -12,18 +12,18 @@ async def main():
 
     # Discover networks
     print("Searching...")
-    addrs = await discover()
-    for i, a in enumerate(addrs):
-        print(f"[{i}]\t{a}")
+    devices = await discover()
+    for i, d in enumerate(devices):
+        print(f"[{i}]\t{d.address}")
 
     selection = int(input("Select network: "))
 
-    addr = addrs[selection]
+    device = devices[selection]
     pwd = input("Enter password: ")
 
     # Connect to the selected network
     casa = Casambi()
-    await casa.connect(addr, pwd)
+    await casa.connect(device, pwd)
 
     # Turn all lights on
     await casa.turnOn(None)

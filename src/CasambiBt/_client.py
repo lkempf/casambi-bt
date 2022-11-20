@@ -8,7 +8,9 @@ from typing import Any, Awaitable, Callable, Dict, Union
 
 from bleak import BleakClient
 from bleak.backends.characteristic import BleakGATTCharacteristic
+from bleak.backends.client import BLEDevice
 from bleak.exc import BleakDBusError, BleakError
+from bleak_retry_connector import establish_connection, get_device
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric import ec
 
@@ -52,15 +54,20 @@ class CasambiClient:
 
     _encryptor: Encryptor
 
-    _outPacketCount = 2
-    _inPacketCount = 1
+    _outPacketCount: int
+    _inPacketCount: int
 
     def __init__(
         self,
-        address: str,
+        address_or_device: Union[str, BLEDevice],
         dataCallback: Callable[[IncommingPacketType, Dict[str, Any]], None],
     ) -> None:
-        self.address = address
+        self._address_or_devive = address_or_device
+        self.address = (
+            address_or_device.address
+            if isinstance(address_or_device, BLEDevice)
+            else address_or_device
+        )
         self._logger = logging.getLogger(__name__)
         self._connectionState = ConnectionState.NONE
         self._dataCallback = dataCallback
@@ -74,7 +81,21 @@ class CasambiClient:
 
         self._logger.info(f"Connection to {self.address}")
 
-        self._gattClient = BleakClient(self.address)
+        # Reset packet counters
+        self._outPacketCount = 2
+        self._inPacketCount = 1
+
+        # To use bleak_retry_connector we need to have a BLEDevice so get one if we only have the address.
+        device = (
+            self._address_or_devive
+            if isinstance(self._address_or_devive, BLEDevice)
+            else await get_device(self.address)
+        )
+
+        # TODO: Should we try to get access to the network name here?
+        self._gattClient = await establish_connection(
+            BleakClient, device, "Casambi Network", self._on_disconnect
+        )
         try:
             await self._gattClient.connect()
         except BleakDBusError as e:
@@ -90,6 +111,10 @@ class CasambiClient:
 
         self._logger.info(f"Connected to {self.address}")
         self._connectionState = ConnectionState.CONNECTED
+
+    def _on_disconnect(self) -> None:
+        self._logger.info(f"Received disconnect callback from {self.address}")
+        self._connectionState = ConnectionState.NONE
 
     async def exchangeKey(self) -> Awaitable[None]:
         self._checkState(ConnectionState.CONNECTED)

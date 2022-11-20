@@ -2,6 +2,7 @@ import logging
 from typing import Awaitable, List
 
 from bleak import BleakScanner
+from bleak.backends.client import BLEDevice
 from bleak.exc import BleakDBusError
 
 from ._constants import CASA_UUID
@@ -10,10 +11,10 @@ from .errors import BluetoothError, BluetoothNotReadyError
 _LOGGER = logging.getLogger(__name__)
 
 
-async def discover() -> Awaitable[List[str]]:
-    """Discover all Casambi networks in range. Only the addresses of the networks are returned.
+async def discover() -> Awaitable[List[BLEDevice]]:
+    """Discover all Casambi networks in range.
 
-    :return: A list of all discovered addresses.
+    :return: A list of all discovered Casambi devices.
     :raises BluetoothNotReadyError: Bluetooth isn't turned on or in a failed state.
     """
 
@@ -32,6 +33,6 @@ async def discover() -> Awaitable[List[str]]:
         if "manufacturer_data" in d.metadata and 963 in d.metadata["manufacturer_data"]:
             if CASA_UUID in d.metadata["uuids"]:
                 _LOGGER.debug(f"Discovered networt at {d.address}")
-                discovered.append(d.address)
+                discovered.append(d)
 
     return discovered
