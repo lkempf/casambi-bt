@@ -12,7 +12,7 @@ from httpx import AsyncClient
 from ._constants import BASE_PATH, DEVICE_NAME
 from ._keystore import KeyStore
 from ._unit import Group, Scene, Unit, UnitControl, UnitControlType, UnitType
-from .errors import AuthenticationError
+from .errors import AuthenticationError, NetworkNotFoundError
 
 
 @dataclass()
@@ -267,16 +267,19 @@ class Network:
         return None
 
 
-async def getNetworkIdFromUuid(
-    mac: str, httpClient: AsyncClient
-) -> Awaitable[Optional[str]]:
+async def getNetworkIdFromUuid(mac: str, httpClient: AsyncClient) -> Awaitable[str]:
     _logger = logging.getLogger(__name__)
     _logger.info(f"Getting network id...")
     getNetworkIdUrl = f"https://api.casambi.com/network/uuid/{mac.replace(':', '')}"
     res = await httpClient.get(getNetworkIdUrl)
 
+    if res.status_code == httpx.codes.NOT_FOUND:
+        raise NetworkNotFoundError(
+            "API failed to find network. Is your network configured correctly?"
+        )
     if res.status_code != httpx.codes.OK:
         _logger.error(f"Getting network id returned {res.status_code}")
+        return None
 
     id = res.json()["id"]
     _logger.info(f"Got network id {id}.")

@@ -92,12 +92,12 @@ class CasambiClient:
             else await get_device(self.address)
         )
 
-        # TODO: Should we try to get access to the network name here?
-        self._gattClient = await establish_connection(
-            BleakClient, device, "Casambi Network", self._on_disconnect
-        )
         try:
-            await self._gattClient.connect()
+            # TODO: Should we try to get access to the network name here?
+            self._gattClient = await establish_connection(
+                BleakClient, device, "Casambi Network", self._on_disconnect
+            )
+        # TODO: Update expected exception types for bleak_retry_connector.
         except BleakDBusError as e:
             self._logger.error("Failed to connect.", exc_info=1)
             if e.dbus_error == "org.bluez.Error.NotReady":
@@ -112,7 +112,7 @@ class CasambiClient:
         self._logger.info(f"Connected to {self.address}")
         self._connectionState = ConnectionState.CONNECTED
 
-    def _on_disconnect(self) -> None:
+    def _on_disconnect(self, client: BleakClient) -> None:
         self._logger.info(f"Received disconnect callback from {self.address}")
         self._connectionState = ConnectionState.NONE
 
