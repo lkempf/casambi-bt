@@ -386,10 +386,7 @@ class CasambiClient:
 
     async def disconnect(self) -> Awaitable[None]:
         self._logger.info(f"Disconnecting...")
-        if (
-            self._connectionState > ConnectionState.NONE
-            and self._gattClient.is_connected
-        ):
+        if self._gattClient.is_connected:
             await self._gattClient.disconnect()
 
         self._connectionState = ConnectionState.NONE

@@ -23,7 +23,7 @@ class Casambi:
     _casaNetwork: Network
     _opContext: OperationsContext
     _httpClient: AsyncClient
-    _externalHttpClient: bool
+    _ownHttpClient: bool
 
     _unitChangedCallbacks: List[Callable[[Unit], None]] = []
 
@@ -32,9 +32,9 @@ class Casambi:
         self._opContext = OperationsContext()
         if not httpClient:
             httpClient = AsyncClient()
-            self._externalHttpClient = True
+            self._ownHttpClient = True
         else:
-            self._externalHttpClient = False
+            self._ownHttpClient = False
         self._httpClient = httpClient
 
     def _checkNetwork(self) -> None:
@@ -173,6 +173,10 @@ class Casambi:
         :param target: One or multiple targeted units.
         :return: Nothing is returned by this function. To get the new state register a change handler.
         """
+
+        # Use -1 to indicate special packet format
+        # Use RestoreLastLevel flag (1) and UseFullTimeFlag (4).
+        # Not sure what UseFullTime does but this is what the app uses.
         await self._send(target, b"\xff\x05", OpCode.SetLevel)
 
     async def switchToScene(self, target: Scene) -> Awaitable[None]:
@@ -280,7 +284,7 @@ class Casambi:
         if self._casaNetwork:
             await self._casaNetwork.disconnect()
             self._casaNetwork = None
-        if self._externalHttpClient:
+        if self._ownHttpClient:
             await self._httpClient.aclose()
 
     async def __aexit__(self) -> Awaitable[None]:
