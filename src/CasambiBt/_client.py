@@ -28,8 +28,13 @@ class ConnectionState(IntEnum):
     ERROR = 99
 
 
-from .errors import (BluetoothError, BluetoothNotReadyError,
-                     ConnectionStateError, NetworkNotFoundError, ProtocolError)
+from .errors import (
+    BluetoothError,
+    BluetoothNotReadyError,
+    ConnectionStateError,
+    NetworkNotFoundError,
+    ProtocolError,
+)
 
 
 @unique
@@ -71,6 +76,7 @@ class CasambiClient:
         self._connectionState = ConnectionState.NONE
         self._dataCallback = dataCallback
         self._disconnectedCallback = disonnectedCallback
+        self._sendLock = asyncio.Lock()
 
     def _checkState(self, desired: ConnectionState) -> None:
         if self._connectionState != desired:
@@ -321,19 +327,23 @@ class CasambiClient:
     async def send(self, packet: bytes) -> Awaitable[None]:
         self._checkState(ConnectionState.AUTHENTICATED)
 
-        self._logger.debug(
-            f"Sending packet {b2a(packet)} with counter {self._outPacketCount}"
-        )
+        await self._sendLock.acquire()
+        try:
+            self._logger.debug(
+                f"Sending packet {b2a(packet)} with counter {self._outPacketCount}"
+            )
 
-        counter = int.to_bytes(self._outPacketCount, 4, "little")
-        headerPaket = counter + b"\x07" + packet
+            counter = int.to_bytes(self._outPacketCount, 4, "little")
+            headerPaket = counter + b"\x07" + packet
 
-        self._logger.debug(f"Packet with header: {b2a(headerPaket)}")
+            self._logger.debug(f"Packet with header: {b2a(headerPaket)}")
 
-        await self._writeEncPacket(
-            headerPaket, self._outPacketCount, CASA_AUTH_CHAR_UUID
-        )
-        self._outPacketCount += 1
+            await self._writeEncPacket(
+                headerPaket, self._outPacketCount, CASA_AUTH_CHAR_UUID
+            )
+            self._outPacketCount += 1
+        finally:
+            self._sendLock.release()
 
     def _establishedNofityCallback(self, handle: int, data: bytes) -> None:
         # TODO: Check incoming counter and direction flag
