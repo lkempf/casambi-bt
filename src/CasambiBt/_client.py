@@ -57,6 +57,9 @@ class CasambiClient:
     _outPacketCount: int
     _inPacketCount: int
 
+    _callbackQueue: asyncio.Queue[tuple[int, bytes]]
+    _callbackTask: asyncio.Task[None] | None
+
     def __init__(
         self,
         address_or_device: Union[str, BLEDevice],
@@ -84,6 +87,10 @@ class CasambiClient:
         # Reset packet counters
         self._outPacketCount = 2
         self._inPacketCount = 1
+
+        # Reset callback queue
+        self._callbackQueue = asyncio.Queue()
+        self._callbackTask = asyncio.create_task(self._processCallbacks())
 
         # To use bleak_retry_connector we need to have a BLEDevice so get one if we only have the address.
         device = (
@@ -143,9 +150,7 @@ class CasambiClient:
         # Device will initiate key exchange, so listen for that
         self._notifySignal = asyncio.Event()
         self._logger.debug(f"Starting notify")
-        await self._gattClient.start_notify(
-            CASA_AUTH_CHAR_UUID, self._callbackMulitplexer
-        )
+        await self._gattClient.start_notify(CASA_AUTH_CHAR_UUID, self._queueCallback)
 
         # Wait for key exchange, will get notified by _exchNotifyCallback
         await self._notifySignal.wait()
@@ -172,6 +177,17 @@ class CasambiClient:
         else:
             self._logger.info("Key exchange sucessful")
             self._connectionState = ConnectionState.KEY_EXCHANGED
+
+    def _queueCallback(self, handle: int, data: bytes) -> None:
+        self._callbackQueue.put_nowait((handle, data))
+
+    async def _processCallbacks(self) -> None:
+        while True:
+            handle, data = await self._callbackQueue.get()
+            try:
+                self._callbackMulitplexer(handle, data)
+            finally:
+                self._callbackQueue.task_done()
 
     def _callbackMulitplexer(self, handle: int, data: bytes) -> None:
         self._logger.debug(f"Callback on handle {handle}: {b2a(data)}")
@@ -386,6 +402,11 @@ class CasambiClient:
 
     async def disconnect(self) -> Awaitable[None]:
         self._logger.info(f"Disconnecting...")
+
+        if self._callbackTask:
+            self._callbackTask.cancel()
+            self._callbackTask = None
+
         if self._gattClient.is_connected:
             await self._gattClient.disconnect()
 
