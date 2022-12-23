@@ -186,13 +186,14 @@ class Casambi:
         # Not sure what UseFullTime does but this is what the app uses.
         await self._send(target, b"\xff\x05", OpCode.SetLevel)
 
-    async def switchToScene(self, target: Scene) -> Awaitable[None]:
+    async def switchToScene(self, target: Scene, level: int = 0xFF) -> Awaitable[None]:
         """Switch the network to a predefined scene.
 
         :param target: The scene to switch to.
+        :param level: An optional relative brightness for all units in the scene.
         :return: Nothing is returned by this function. To get the new state register a change handler.
         """
-        await self._send(target, b"\xff", OpCode.SetLevel)
+        await self.setLevel(target, level)
 
     async def _send(
         self, target: Union[Unit, Group, Scene, None], state: bytes, opcode: OpCode
