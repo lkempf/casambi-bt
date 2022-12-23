@@ -110,7 +110,9 @@ class Casambi:
 
         self._logger.info(f"Trying to connect to casambi network {addr}...")
 
-        self._casaClient = CasambiClient(addr_or_device, self._dataCallback)
+        self._casaClient = CasambiClient(
+            addr_or_device, self._dataCallback, self._disconnect_callback
+        )
 
         # Retrieve network information
         networkId = await getNetworkIdFromUuid(addr, self._httpClient)
@@ -122,6 +124,11 @@ class Casambi:
         await self._casaNetwork.update()
 
         await self._connectClient()
+
+        # HACK: Mark all units as online on connection since they don't always send their state.
+        # TODO: Figure out how to query unit state.
+        for u in self.units:
+            u._online = True
 
     async def _connectClient(self) -> Awaitable[None]:
         """Initiate the bluetooth connection."""
@@ -275,7 +282,18 @@ class Casambi:
         self._unitChangedCallbacks.remove(handler)
         self._logger.info(f"Removed unit changed handler {handler}")
 
-    # TODO: Implement disconnected callback
+    def _disconnect_callback(self) -> None:
+        # Mark all units as offline on disconnect.
+        for u in self.units:
+            u._online = False
+            for h in self._unitChangedCallbacks:
+                try:
+                    h(u)
+                except Exception:
+                    self._logger.error(
+                        f"Exception occurred in unitChangedCallback {h}.",
+                        exc_info=1,
+                    )
 
     async def disconnect(self) -> Awaitable[None]:
         """Disconnect from the network."""

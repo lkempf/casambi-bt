@@ -28,13 +28,8 @@ class ConnectionState(IntEnum):
     ERROR = 99
 
 
-from .errors import (
-    BluetoothError,
-    BluetoothNotReadyError,
-    ConnectionStateError,
-    NetworkNotFoundError,
-    ProtocolError,
-)
+from .errors import (BluetoothError, BluetoothNotReadyError,
+                     ConnectionStateError, NetworkNotFoundError, ProtocolError)
 
 
 @unique
@@ -64,6 +59,7 @@ class CasambiClient:
         self,
         address_or_device: Union[str, BLEDevice],
         dataCallback: Callable[[IncommingPacketType, Dict[str, Any]], None],
+        disonnectedCallback: Callable[[], None],
     ) -> None:
         self._address_or_devive = address_or_device
         self.address = (
@@ -74,6 +70,7 @@ class CasambiClient:
         self._logger = logging.getLogger(__name__)
         self._connectionState = ConnectionState.NONE
         self._dataCallback = dataCallback
+        self._disconnectedCallback = disonnectedCallback
 
     def _checkState(self, desired: ConnectionState) -> None:
         if self._connectionState != desired:
@@ -122,6 +119,7 @@ class CasambiClient:
     def _on_disconnect(self, client: BleakClient) -> None:
         self._logger.info(f"Received disconnect callback from {self.address}")
         self._connectionState = ConnectionState.NONE
+        self._disconnectedCallback()
 
     async def exchangeKey(self) -> Awaitable[None]:
         self._checkState(ConnectionState.CONNECTED)
