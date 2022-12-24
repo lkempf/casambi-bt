@@ -170,6 +170,52 @@ class Casambi:
         payload = level.to_bytes(1, byteorder="big", signed=False)
         await self._send(target, payload, OpCode.SetLevel)
 
+    async def setWhite(
+        self, target: Union[Unit, Group, None], level: int
+    ) -> Awaitable[None]:
+        """Set the white level for one or multiple units.
+
+        If ``target`` is of type ``Unit`` only this unit is affected.
+        If ``target`` is of type ``Group`` the whole group is affected.
+        if ``target`` is of type ``None`` all units in the network are affected.
+
+        :param target: One or multiple targeted units.
+        :param level: The desired level in range [0, 255].
+        :return: Nothing is returned by this function. To get the new state register a change handler.
+        :raises ValueError: The supplied level isn't in range
+        """
+        if level < 0 or level > 255:
+            raise ValueError()
+
+        payload = level.to_bytes(1, byteorder="big", signed=False)
+        await self._send(target, payload, OpCode.SetWhite)
+
+    async def setColor(
+        self, target: Union[Unit, Group, None], rgbColor: tuple[int, int, int]
+    ) -> Awaitable[None]:
+        """Set the rgb color for one or multiple units.
+
+        If ``target`` is of type ``Unit`` only this unit is affected.
+        If ``target`` is of type ``Group`` the whole group is affected.
+        if ``target`` is of type ``None`` all units in the network are affected.
+
+        :param target: One or multiple targeted units.
+        :param level: The desired level in range [0, 255].
+        :return: Nothing is returned by this function. To get the new state register a change handler.
+        :raises ValueError: The supplied level isn't in range
+        """
+
+        state = UnitState()
+        state.rgb = rgbColor
+        hs = state.hs
+        hue = round(hs[0] * 1023)
+        sat = round(hs[1] * 255)
+
+        payload = hue.to_bytes(2, byteorder="little", signed=False) + sat.to_bytes(
+            1, byteorder="little", signed=False
+        )
+        await self._send(target, payload, OpCode.SetColor)
+
     async def turnOn(self, target: Union[Unit, Group, None]) -> Awaitable[None]:
         """Turn one or multiple units on to their last level.
 
