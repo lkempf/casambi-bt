@@ -134,7 +134,7 @@ class Network:
 
         if res.status_code != httpx.codes.OK:
             self._logger.error(f"Update failed: {res.status_code}\n{res.text}")
-            return False
+            raise NetworkNotFoundError("Could not update network!")
 
         self._logger.debug(f"Network: {res.text}")
 
