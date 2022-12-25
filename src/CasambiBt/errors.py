@@ -9,6 +9,10 @@ class NetworkNotFoundError(CasambiBtError):
     pass
 
 
+class NetworkUpdateError(CasambiBtError):
+    pass
+
+
 class ConnectionStateError(CasambiBtError):
     def __init__(
         self, expected: ConnectionState, got: ConnectionState, expl: str | None = None

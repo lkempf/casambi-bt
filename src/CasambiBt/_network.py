@@ -12,7 +12,8 @@ from httpx import AsyncClient
 from ._constants import BASE_PATH, DEVICE_NAME
 from ._keystore import KeyStore
 from ._unit import Group, Scene, Unit, UnitControl, UnitControlType, UnitType
-from .errors import AuthenticationError, NetworkNotFoundError
+from .errors import (AuthenticationError, NetworkNotFoundError,
+                     NetworkUpdateError)
 
 
 @dataclass()
@@ -116,7 +117,7 @@ class Network:
             self._logger.error(f"Login failed: {res.status_code}\n{res.text}")
             return False
 
-    async def update(self) -> Awaitable[bool]:
+    async def update(self) -> Awaitable[None]:
         self._logger.info(f"Updating network...")
         if not self.authenticated():
             raise AuthenticationError("Not authenticated!")
@@ -134,7 +135,7 @@ class Network:
 
         if res.status_code != httpx.codes.OK:
             self._logger.error(f"Update failed: {res.status_code}\n{res.text}")
-            return False
+            raise NetworkUpdateError("Could not update network!")
 
         self._logger.debug(f"Network: {res.text}")
 
