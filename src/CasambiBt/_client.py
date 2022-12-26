@@ -76,7 +76,7 @@ class CasambiClient:
         self._connectionState = ConnectionState.NONE
         self._dataCallback = dataCallback
         self._disconnectedCallback = disonnectedCallback
-        self._sendLock = asyncio.Lock()
+        self._activityLock = asyncio.Lock()
 
     def _checkState(self, desired: ConnectionState) -> None:
         if self._connectionState != desired:
@@ -127,60 +127,72 @@ class CasambiClient:
         self._connectionState = ConnectionState.NONE
         self._disconnectedCallback()
 
-    async def exchangeKey(self) -> Awaitable[None]:
+    async def exchangeKey(self, keystore: KeyStore) -> Awaitable[None]:
         self._checkState(ConnectionState.CONNECTED)
 
         self._logger.info("Starting key exchange...")
 
-        # Initiate communication with device
-        firstResp = await self._gattClient.read_gatt_char(CASA_AUTH_CHAR_UUID)
-        self._logger.debug(f"Got {b2a(firstResp)}")
+        await self._activityLock.acquire()
+        try:
+            # Initiate communication with device
+            firstResp = await self._gattClient.read_gatt_char(CASA_AUTH_CHAR_UUID)
+            self._logger.debug(f"Got {b2a(firstResp)}")
 
-        # Check type and protocol version
-        if not (firstResp[0] == 0x1 and firstResp[1] == 0xA):
-            self._connectionState = ConnectionState.ERROR
-            raise ProtocolError(
-                "Unexpected answer from device! Wrong device or protocol version?"
+            # Check type and protocol version
+            if not (firstResp[0] == 0x1 and firstResp[1] == 0xA):
+                self._connectionState = ConnectionState.ERROR
+                raise ProtocolError(
+                    "Unexpected answer from device! Wrong device or protocol version?"
+                )
+
+            # Parse device info
+            self._mtu, self._unit, self._flags, self._nonce = struct.unpack_from(
+                ">BHH16s", firstResp, 2
+            )
+            self._logger.debug(
+                f"Parsed mtu {self._mtu}, unit {self._unit}, flags {self._flags}, nonce {b2a(self._nonce)}"
             )
 
-        # Parse device info
-        self._mtu, self._unit, self._flags, self._nonce = struct.unpack_from(
-            ">BHH16s", firstResp, 2
-        )
-        self._logger.debug(
-            f"Parsed mtu {self._mtu}, unit {self._unit}, flags {self._flags}, nonce {b2a(self._nonce)}"
-        )
+            # Device will initiate key exchange, so listen for that
+            self._notifySignal = asyncio.Event()
+            self._logger.debug(f"Starting notify")
+            await self._gattClient.start_notify(
+                CASA_AUTH_CHAR_UUID, self._queueCallback
+            )
 
-        # Device will initiate key exchange, so listen for that
-        self._notifySignal = asyncio.Event()
-        self._logger.debug(f"Starting notify")
-        await self._gattClient.start_notify(CASA_AUTH_CHAR_UUID, self._queueCallback)
+            # Wait for key exchange, will get notified by _exchNotifyCallback
+            await self._notifySignal.wait()
+            self._notifySignal.clear()
+            if self._connectionState == ConnectionState.ERROR:
+                raise ProtocolError("Invalid key exchange initiation.")
 
-        # Wait for key exchange, will get notified by _exchNotifyCallback
-        await self._notifySignal.wait()
-        self._notifySignal.clear()
-        if self._connectionState == ConnectionState.ERROR:
-            raise ProtocolError("Invalid key exchange initiation.")
+            # Respond to key exchange
+            pubNums = self._pubKey.public_numbers()
+            keyExchResponse = struct.pack(
+                ">B32s32sB",
+                0x2,
+                pubNums.x.to_bytes(32, byteorder="little", signed=False),
+                pubNums.y.to_bytes(32, byteorder="little", signed=False),
+                0x1,
+            )
+            await self._gattClient.write_gatt_char(CASA_AUTH_CHAR_UUID, keyExchResponse)
 
-        # Respond to key exchange
-        pubNums = self._pubKey.public_numbers()
-        keyExchResponse = struct.pack(
-            ">B32s32sB",
-            0x2,
-            pubNums.x.to_bytes(32, byteorder="little", signed=False),
-            pubNums.y.to_bytes(32, byteorder="little", signed=False),
-            0x1,
-        )
-        await self._gattClient.write_gatt_char(CASA_AUTH_CHAR_UUID, keyExchResponse)
+            # Wait for success response from _exchNotifyCallback
+            await self._notifySignal.wait()
+            self._notifySignal.clear()
+            if self._connectionState == ConnectionState.ERROR:
+                raise ProtocolError("Failed to negotiate key!")
+            else:
+                self._logger.info("Key exchange sucessful")
+                self._encryptor = Encryptor(self._transportKey)
 
-        # Wait for success response from _exchNotifyCallback
-        await self._notifySignal.wait()
-        self._notifySignal.clear()
-        if self._connectionState == ConnectionState.ERROR:
-            raise ProtocolError("Failed to negotiate key!")
-        else:
-            self._logger.info("Key exchange sucessful")
-            self._connectionState = ConnectionState.KEY_EXCHANGED
+                # Skip auth if the network doesn't use a key.
+                if keystore.getKey():
+                    self._connectionState = ConnectionState.KEY_EXCHANGED
+                else:
+                    self._connectionState = ConnectionState.AUTHENTICATED
+        finally:
+            self._activityLock.release()
 
     def _queueCallback(self, handle: int, data: bytes) -> None:
         self._callbackQueue.put_nowait((handle, data))
@@ -188,10 +200,12 @@ class CasambiClient:
     async def _processCallbacks(self) -> None:
         while True:
             handle, data = await self._callbackQueue.get()
+            await self._activityLock.acquire()
             try:
                 self._callbackMulitplexer(handle, data)
             finally:
                 self._callbackQueue.task_done()
+                self._activityLock.release()
 
     def _callbackMulitplexer(self, handle: int, data: bytes) -> None:
         self._logger.debug(f"Callback on handle {handle}: {b2a(data)}")
@@ -260,33 +274,39 @@ class CasambiClient:
         key = keystore.getKey()  # Session key
 
         if not key:
-            raise ValueError("No key in keystore")
+            self._logger.info("No key in keystore. Skipping auth.")
+            # The channel already has to be set to authenticated by exchangeKey.
+            # This needs to be done there a non-handshake packet could be sent right after acking the key exch
+            # and we don't want that packet to end up in _authNofityCallback.
+            return
 
-        self._encryptor = Encryptor(self._transportKey)
+        await self._activityLock.acquire()
+        try:
+            # Compute client auth digest
+            hashFcnt = sha256()
+            hashFcnt.update(key.key)
+            hashFcnt.update(self._nonce)
+            hashFcnt.update(self._transportKey)
+            authDig = hashFcnt.digest()
+            self._logger.debug(f"Auth digest: {b2a(authDig)}")
 
-        # Compute client auth digest
-        hashFcnt = sha256()
-        hashFcnt.update(key.key)
-        hashFcnt.update(self._nonce)
-        hashFcnt.update(self._transportKey)
-        authDig = hashFcnt.digest()
-        self._logger.debug(f"Auth digest: {b2a(authDig)}")
+            # Send auth packet
+            authPacket = int.to_bytes(1, 4, "little")
+            authPacket += b"\x04"
+            authPacket += key.id.to_bytes(1, "little")
+            authPacket += authDig
+            await self._writeEncPacket(authPacket, 1, CASA_AUTH_CHAR_UUID)
 
-        # Send auth packet
-        authPacket = int.to_bytes(1, 4, "little")
-        authPacket += b"\x04"
-        authPacket += key.id.to_bytes(1, "little")
-        authPacket += authDig
-        await self._writeEncPacket(authPacket, 1, CASA_AUTH_CHAR_UUID)
-
-        # Wait for auth response
-        await self._notifySignal.wait()
-        self._notifySignal.clear()
-        if self._connectionState == ConnectionState.ERROR:
-            raise ProtocolError("Failed to verify authentication response.")
-        else:
-            self._connectionState = ConnectionState.AUTHENTICATED
-            self._logger.info("Authentication successful")
+            # Wait for auth response
+            await self._notifySignal.wait()
+            self._notifySignal.clear()
+            if self._connectionState == ConnectionState.ERROR:
+                raise ProtocolError("Failed to verify authentication response.")
+            else:
+                self._connectionState = ConnectionState.AUTHENTICATED
+                self._logger.info("Authentication successful")
+        finally:
+            self._activityLock.release()
 
     def _authNofityCallback(self, handle: int, data: bytes) -> None:
         self._logger.info("Processing authentication response...")
@@ -327,7 +347,7 @@ class CasambiClient:
     async def send(self, packet: bytes) -> Awaitable[None]:
         self._checkState(ConnectionState.AUTHENTICATED)
 
-        await self._sendLock.acquire()
+        await self._activityLock.acquire()
         try:
             self._logger.debug(
                 f"Sending packet {b2a(packet)} with counter {self._outPacketCount}"
@@ -343,7 +363,7 @@ class CasambiClient:
             )
             self._outPacketCount += 1
         finally:
-            self._sendLock.release()
+            self._activityLock.release()
 
     def _establishedNofityCallback(self, handle: int, data: bytes) -> None:
         # TODO: Check incoming counter and direction flag

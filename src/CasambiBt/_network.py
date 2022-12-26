@@ -12,8 +12,7 @@ from httpx import AsyncClient
 from ._constants import BASE_PATH, DEVICE_NAME
 from ._keystore import KeyStore
 from ._unit import Group, Scene, Unit, UnitControl, UnitControlType, UnitType
-from .errors import (AuthenticationError, NetworkNotFoundError,
-                     NetworkUpdateError)
+from .errors import AuthenticationError, NetworkNotFoundError, NetworkUpdateError
 
 
 @dataclass()
@@ -145,10 +144,11 @@ class Network:
         self._networkName = resJson["network"]["name"]
         self._networkRevision = resJson["network"]["revision"]
 
-        # Parse keys
-        keys = resJson["network"]["keyStore"]["keys"]
-        for k in keys:
-            self._keystore.addKey(k)
+        # Parse keys if there are any. Otherwise the network is probably set up for keyless auth.
+        if "keyStore" in resJson["network"]:
+            keys = resJson["network"]["keyStore"]["keys"]
+            for k in keys:
+                self._keystore.addKey(k)
 
         # Parse units
         self.units = []

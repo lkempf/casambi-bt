@@ -134,7 +134,7 @@ class Casambi:
         """Initiate the bluetooth connection."""
         await self._casaClient.connect()
         try:
-            await self._casaClient.exchangeKey()
+            await self._casaClient.exchangeKey(self._casaNetwork.getKeyStore())
             await self._casaClient.authenticate(self._casaNetwork.getKeyStore())
         except ProtocolError as e:
             await self._casaClient.disconnect()
