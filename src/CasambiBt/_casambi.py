@@ -100,7 +100,7 @@ class Casambi:
         :raises AuthenticationError: The supplied password is invalid.
         :raises ProtocolError: The network did not follow the expected protocol.
         :raises NetworkNotFoundError: No network was found under the supplied address.
-        :raises BluetoothNotReadyError: Bluetooth isn't turned on or in a failed state.
+        :raises BluetoothError: An error occurred in the bluetooth stack.
         """
 
         if isinstance(addr_or_device, BLEDevice):

@@ -9,8 +9,8 @@ from typing import Any, Awaitable, Callable, Dict, Union
 from bleak import BleakClient
 from bleak.backends.characteristic import BleakGATTCharacteristic
 from bleak.backends.client import BLEDevice
-from bleak.exc import BleakDBusError, BleakError
-from bleak_retry_connector import establish_connection, get_device
+from bleak.exc import BleakError
+from bleak_retry_connector import BleakNotFoundError, establish_connection, get_device
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric import ec
 
@@ -30,7 +30,6 @@ class ConnectionState(IntEnum):
 
 from .errors import (
     BluetoothError,
-    BluetoothNotReadyError,
     ConnectionStateError,
     NetworkNotFoundError,
     ProtocolError,
@@ -107,25 +106,23 @@ class CasambiClient:
             self._gattClient = await establish_connection(
                 BleakClient, device, "Casambi Network", self._on_disconnect
             )
-        # TODO: Update expected exception types for bleak_retry_connector.
-        except BleakDBusError as e:
-            self._logger.error("Failed to connect.", exc_info=1)
-            if e.dbus_error == "org.bluez.Error.NotReady":
-                raise BluetoothNotReadyError(e.dbus_error, e.dbus_error_details)
-            else:
-                raise BluetoothError(e.dbus_error, e.dbus_error_details)
-        except BleakError:
+        except BleakNotFoundError as e:
             # Guess that this is the error reason since ther are no better error types
             self._logger.error("Failed to find client.", exc_info=1)
-            raise NetworkNotFoundError()
+            raise NetworkNotFoundError from e
+        except BleakError as e:
+            self._logger.error("Failed to connect.", exc_info=1)
+            raise BluetoothError(e.args) from e
 
         self._logger.info(f"Connected to {self.address}")
         self._connectionState = ConnectionState.CONNECTED
 
     def _on_disconnect(self, client: BleakClient) -> None:
-        self._logger.info(f"Received disconnect callback from {self.address}")
+        if self._connectionState != ConnectionState.NONE:
+            self._logger.info(f"Received disconnect callback from {self.address}")
+        if self._connectionState == ConnectionState.CONNECTED:
+            self._disconnectedCallback()
         self._connectionState = ConnectionState.NONE
-        self._disconnectedCallback()
 
     async def exchangeKey(self, keystore: KeyStore) -> Awaitable[None]:
         self._checkState(ConnectionState.CONNECTED)
