@@ -25,3 +25,5 @@ If you have problems connecting to the network please check that your network is
 ![Gateway settings](/doc/img/gateway.png)
 ![Network settings](/doc/img/network.png)
 ![Performance settings](/doc/img/perf.png)
+
+It uses the Evolution firmware.
