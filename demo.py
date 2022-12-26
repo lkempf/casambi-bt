@@ -1,8 +1,6 @@
 import asyncio
 import logging
 
-from bleak.backends.device import BLEDevice
-
 from CasambiBt import Casambi, discover
 
 _LOGGER = logging.getLogger()
@@ -16,8 +14,7 @@ async def main():
     print("Searching...")
     devices = await discover()
     for i, d in enumerate(devices):
-        if isinstance(d, BLEDevice):
-            print(f"[{i}]\t{d.address}")
+        print(f"[{i}]\t{d.address}")
 
     selection = int(input("Select network: "))
 
