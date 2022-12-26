@@ -207,7 +207,6 @@ class Network:
         self._saveTypeCache()
 
         self._logger.info("Network updated.")
-        return True
 
     async def _fetchUnitInfo(self, id: int) -> Awaitable[UnitType]:
         self._logger.info(f"Fetching unit type for id {id}...")
