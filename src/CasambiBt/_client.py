@@ -39,6 +39,7 @@ from .errors import (
 @unique
 class IncommingPacketType(IntEnum):
     UnitState = 6
+    NetworkConfig = 9
 
 
 class CasambiClient:
