@@ -379,6 +379,12 @@ class CasambiClient:
 
         if packetType == IncommingPacketType.UnitState:
             self._parseUnitStates(data[1:])
+        elif packetType == IncommingPacketType.NetworkConfig:
+            # We don't care about the config the network thinks it has.
+            # We assume that cloud config and local config match.
+            # If there is a mismatch the user can solve it using the app.
+            # In the future we might want to parse the revision and issue a warning if there is a mismatch.
+            pass
         else:
             self._logger.warning(f"Packet type {packetType} not implemented. Ignoring!")
 
