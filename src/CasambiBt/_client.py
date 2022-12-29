@@ -157,9 +157,13 @@ class CasambiClient:
             await self._gattClient.start_notify(
                 CASA_AUTH_CHAR_UUID, self._queueCallback
             )
+        finally:
+            self._activityLock.release()
 
-            # Wait for key exchange, will get notified by _exchNotifyCallback
-            await self._notifySignal.wait()
+        # Wait for key exchange, will get notified by _exchNotifyCallback
+        await self._notifySignal.wait()
+        await self._activityLock.acquire()
+        try:
             self._notifySignal.clear()
             if self._connectionState == ConnectionState.ERROR:
                 raise ProtocolError("Invalid key exchange initiation.")
@@ -174,9 +178,13 @@ class CasambiClient:
                 0x1,
             )
             await self._gattClient.write_gatt_char(CASA_AUTH_CHAR_UUID, keyExchResponse)
+        finally:
+            self._activityLock.release()
 
-            # Wait for success response from _exchNotifyCallback
-            await self._notifySignal.wait()
+        # Wait for success response from _exchNotifyCallback
+        await self._notifySignal.wait()
+        await self._activityLock.acquire()
+        try:
             self._notifySignal.clear()
             if self._connectionState == ConnectionState.ERROR:
                 raise ProtocolError("Failed to negotiate key!")
@@ -294,9 +302,14 @@ class CasambiClient:
             authPacket += key.id.to_bytes(1, "little")
             authPacket += authDig
             await self._writeEncPacket(authPacket, 1, CASA_AUTH_CHAR_UUID)
+        finally:
+            self._activityLock.release()
 
-            # Wait for auth response
-            await self._notifySignal.wait()
+        # Wait for auth response
+        await self._notifySignal.wait()
+
+        await self._activityLock.acquire()
+        try:
             self._notifySignal.clear()
             if self._connectionState == ConnectionState.ERROR:
                 raise ProtocolError("Failed to verify authentication response.")
