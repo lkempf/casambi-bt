@@ -26,7 +26,9 @@ If you have problems connecting to the network please check that your network is
 ![Network settings](/doc/img/network.png)
 ![Performance settings](/doc/img/perf.png)
 
-### Working Luminaires 
+### Working Luminaires
+
+The implementation has been tested with the following luminaires:
 
 | OEM   | Fixture Model  | Firmware Version | Controls | Limitations |
 | ----- | -------------- | ---------------- | -------- | ------ |
