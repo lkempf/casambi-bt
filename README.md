@@ -13,9 +13,11 @@ For a more mature solution using a gateway and the official Casambi API have a l
 ## Getting started
 
 This library is available on PyPi:
+
 ```
 pip install casambi-bt
 ```
+
 Have a look at `demo.py` for a small example.
 
 ### Casambi network setup
