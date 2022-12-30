@@ -6,7 +6,7 @@ This library provides a currently **alpha quality** interface to Casambi-based l
 The author is not associated with Casambi and the implementation is based on his own analysis of the protocol.
 This interface is not feature complete and was only tested with a very small network.
 
-If you want to check out my (slow) progress in writing a integration for Homeassistant using this library you can take a look at [https://github.com/lkempf/casambi-bt-hass/](https://github.com/lkempf/casambi-bt-hass/).
+If you want to check out my (slow) progress in writing a integration for Home Assistant using this library you can take a look at [https://github.com/lkempf/casambi-bt-hass/](https://github.com/lkempf/casambi-bt-hass/).
 
 For a more mature solution using a gateway and the official Casambi API have a look at [https://github.com/hellqvio86/aiocasambi](https://github.com/hellqvio86/aiocasambi).
 
