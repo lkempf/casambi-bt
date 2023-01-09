@@ -24,6 +24,9 @@ class UnitControlType(Enum):
     ONOFF = 3
     """The unit can be turned on or off."""
 
+    TEMPERATURE = 4
+    """The temperature of the light can be adjusted."""
+
     UNKOWN = 99
     """State isn't implemented. Control saved for debuggin purposes."""
 
@@ -35,6 +38,9 @@ class UnitControl:
     length: int
     default: int
     readonly: bool
+
+    min: Optional[int] = None
+    max: Optional[int] = None
 
 
 @dataclass(frozen=True, repr=True)
@@ -72,6 +78,7 @@ class UnitState:
     _dimmer: Optional[int] = None
     _rgb: Optional[Tuple[int, int, int]] = None
     _white: Optional[int] = None
+    _temperature: Optional[int] = None
 
     def _check_range(self, value: int, min: int, max: int) -> None:
         if value < min or value > max:
@@ -155,8 +162,20 @@ class UnitState:
     def white(self) -> None:
         self._white = None
 
+    @property
+    def temperature(self) -> Optional[int]:
+        return self._temperature
+
+    @temperature.setter
+    def temperature(self, value: int) -> None:
+        self._temperature = value
+
+    @temperature.deleter
+    def temperature(self) -> None:
+        self.temperature = None
+
     def __repr__(self) -> str:
-        return f"UnitState(dimmer={self.dimmer}, rgb={self.rgb.__repr__()}, white={self.white})"
+        return f"UnitState(dimmer={self.dimmer}, rgb={self.rgb.__repr__()}, white={self.white}, temperature={self.temperature})"
 
 
 # TODO: Make unit immutable (refactor state, on, online out of it)
@@ -245,6 +264,12 @@ class Unit:
             elif c.type == UnitControlType.WHITE and state.white is not None:
                 scale = UnitState.WHITE_RESOLUTION - c.length
                 scaledValue = state.white >> scale
+            elif (
+                c.type == UnitControlType.TEMPERATURE and state.temperature is not None
+            ):
+                clampedTemp = max(c.max, min(c.min, state.temperature))
+                tempMask = 2**c.length - 1
+                scaledValue = (tempMask * (clampedTemp - c.min)) // (c.max - c.min)
 
             # Use default if unsupported type or unset value in state
             else:
@@ -317,6 +342,11 @@ class Unit:
             elif c.type == UnitControlType.WHITE:
                 scale = UnitState.WHITE_RESOLUTION - c.length
                 self._state.white = cInt << scale
+            elif c.type == UnitControlType.TEMPERATURE:
+                tempRange = c.max - c.min
+                tempMask = 2**c.length - 1
+                # TODO: We should probalby try to make this number a bit more round
+                self._state.temperature = int(((cInt / tempMask) * tempRange) + c.min)
             elif c.type == UnitControlType.UNKOWN:
                 # Might be useful for implementing more state types
                 _LOGGER.debug(f"Value for unkown control type at {c.offset}: {cInt}")

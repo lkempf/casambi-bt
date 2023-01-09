@@ -245,6 +245,12 @@ class Network:
                 controlJson["default"],
                 controlJson["readonly"],
             )
+
+            if "min" in controlJson:
+                controlObj.min = controlJson["min"]
+            if "max" in controlJson:
+                controlObj.max = controlJson["max"]
+
             controls.append(controlObj)
 
         # Parse UnitType
