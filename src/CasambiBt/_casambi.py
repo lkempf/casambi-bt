@@ -131,11 +131,6 @@ class Casambi:
 
         await self._connectClient()
 
-        # HACK: Mark all units as online on connection since they don't always send their state.
-        # TODO: Figure out how to query unit state.
-        for u in self.units:
-            u._online = True
-
     async def _connectClient(self) -> None:
         """Initiate the bluetooth connection."""
         await self._casaClient.connect()
