@@ -200,9 +200,9 @@ class Casambi:
         if ``target`` is of type ``None`` all units in the network are affected.
 
         :param target: One or multiple targeted units.
-        :param level: The desired level in range [0, 255].
+        :param rgbColor: The desired color as a tuple of three ints in range [0, 255].
         :return: Nothing is returned by this function. To get the new state register a change handler.
-        :raises ValueError: The supplied level isn't in range
+        :raises ValueError: The supplied rgbColor isn't in range
         """
 
         state = UnitState()
