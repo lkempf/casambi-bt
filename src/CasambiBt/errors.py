@@ -1,3 +1,5 @@
+from typing import Optional
+
 from ._client import ConnectionState
 
 
@@ -15,7 +17,10 @@ class NetworkUpdateError(CasambiBtError):
 
 class ConnectionStateError(CasambiBtError):
     def __init__(
-        self, expected: ConnectionState, got: ConnectionState, expl: str | None = None
+        self,
+        expected: ConnectionState,
+        got: ConnectionState,
+        expl: Optional[str] = None,
     ) -> None:
         self.expected = expected
         self.got = got

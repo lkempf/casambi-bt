@@ -69,6 +69,8 @@ class UnitType:
             if c.type == controlType:
                 return c
 
+        return None
+
 
 # TODO: Support for different resolutions?
 # TODO: Work with HS instead of RGB internally
@@ -84,13 +86,13 @@ class UnitState:
         if value < min or value > max:
             raise ValueError(f"{value} is not between {min} and {max}")
 
-    @property
-    def dimmer(self) -> Optional[int]:
-        return self._dimmer
-
     DIMMER_RESOLUTION: Final = 8
     DIMMER_MIN: Final = 0
     DIMMER_MAX: Final = 2**DIMMER_RESOLUTION - 1
+
+    @property
+    def dimmer(self) -> Optional[int]:
+        return self._dimmer
 
     @dimmer.setter
     def dimmer(self, value: int) -> None:
@@ -101,13 +103,13 @@ class UnitState:
     def dimmer(self) -> None:
         self._dimmer = None
 
-    @property
-    def rgb(self) -> Optional[Tuple[int, int, int]]:
-        return self._rgb
-
     RGB_RESOLUTION: Final = 8
     RGB_MIN: Final = 0
     RGB_MAX: Final = 2**RGB_RESOLUTION - 1
+
+    @property
+    def rgb(self) -> Optional[Tuple[int, int, int]]:
+        return self._rgb
 
     @rgb.setter
     def rgb(self, value: Tuple[int, int, int]) -> None:
@@ -143,15 +145,15 @@ class UnitState:
         h, s = value
 
         rgb = hsv_to_rgb(h, s, 1)
-        self.rgb = [round(c * (2**self.RGB_RESOLUTION - 1)) for c in rgb]
-
-    @property
-    def white(self) -> Optional[int]:
-        return self._white
+        self.rgb = tuple([round(c * (2**self.RGB_RESOLUTION - 1)) for c in rgb])  # type: ignore[assignment]
 
     WHITE_RESOLUTION = 8
     WHITE_MIN = 0
     WHITE_MAX = 2**WHITE_RESOLUTION - 1
+
+    @property
+    def white(self) -> Optional[int]:
+        return self._white
 
     @white.setter
     def white(self, value: int) -> None:
@@ -213,7 +215,11 @@ class Unit:
     @property
     def is_on(self) -> bool:
         """Determine whether the unit is turned on."""
-        if self.unitType.get_control(UnitControlType.DIMMER):
+        if (
+            self.unitType.get_control(UnitControlType.DIMMER)
+            and self._state
+            and self._state.dimmer
+        ):
             return self._on and self._state.dimmer > 0
         else:
             return self._on
@@ -234,7 +240,6 @@ class Unit:
         # TODO: Support for resolutions >8 byte?
         # Parse and convert state
         for c in self.unitType.controls:
-            scaledValue = None
             if c.type == UnitControlType.DIMMER and state.dimmer is not None:
                 scale = UnitState.DIMMER_RESOLUTION - c.length
                 scaledValue = state.dimmer >> scale
@@ -244,7 +249,7 @@ class Unit:
                 satLen = c.length - hueLen
                 satMask = 2**satLen - 1
 
-                h, s = state.hs
+                h, s = state.hs  # type: ignore[misc]
 
                 scaledValue = ((round(h * hueMask) & hueMask) << satLen) + (
                     round(s * satMask) & satMask
@@ -265,7 +270,10 @@ class Unit:
                 scale = UnitState.WHITE_RESOLUTION - c.length
                 scaledValue = state.white >> scale
             elif (
-                c.type == UnitControlType.TEMPERATURE and state.temperature is not None
+                c.type == UnitControlType.TEMPERATURE
+                and state.temperature is not None
+                and c.min
+                and c.max
             ):
                 clampedTemp = max(c.max, min(c.min, state.temperature))
                 tempMask = 2**c.length - 1
@@ -324,7 +332,7 @@ class Unit:
                 h = (cInt >> satLen) / hueMask
                 s = (cInt & satMask) / satMask
 
-                self.state.hs = (h, s)
+                self._state.hs = (h, s)
                 # Old RGB Code (might still be useful for earlier protocol versions):
                 """
                 assert c.length % 3 == 0, "Invalid RGB length"
@@ -343,6 +351,9 @@ class Unit:
                 scale = UnitState.WHITE_RESOLUTION - c.length
                 self._state.white = cInt << scale
             elif c.type == UnitControlType.TEMPERATURE:
+                if not c.max or not c.min:
+                    _LOGGER.warning(f"Can't set temperature when min or max unknown.")
+                    continue
                 tempRange = c.max - c.min
                 tempMask = 2**c.length - 1
                 # TODO: We should probalby try to make this number a bit more round

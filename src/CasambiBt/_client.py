@@ -4,7 +4,7 @@ import struct
 from binascii import b2a_hex as b2a
 from enum import IntEnum, unique
 from hashlib import sha256
-from typing import Any, Awaitable, Callable, Dict, Union
+from typing import Any, Callable, Optional, Union
 
 from bleak import BleakClient
 from bleak.backends.characteristic import BleakGATTCharacteristic
@@ -57,13 +57,13 @@ class CasambiClient:
     _outPacketCount: int
     _inPacketCount: int
 
-    _callbackQueue: asyncio.Queue[tuple[int, bytes]]
-    _callbackTask: asyncio.Task[None] | None
+    _callbackQueue: asyncio.Queue[tuple[BleakGATTCharacteristic, bytes]]
+    _callbackTask: Optional[asyncio.Task[None]]
 
     def __init__(
         self,
         address_or_device: Union[str, BLEDevice],
-        dataCallback: Callable[[IncommingPacketType, Dict[str, Any]], None],
+        dataCallback: Callable[[IncommingPacketType, dict[str, Any]], None],
         disonnectedCallback: Callable[[], None],
     ) -> None:
         self._address_or_devive = address_or_device
@@ -82,7 +82,7 @@ class CasambiClient:
         if self._connectionState != desired:
             raise ConnectionStateError(desired, self._connectionState)
 
-    async def connect(self) -> Awaitable[None]:
+    async def connect(self) -> None:
         self._checkState(ConnectionState.NONE)
 
         self._logger.info(f"Connection to {self.address}")
@@ -102,6 +102,10 @@ class CasambiClient:
             else await get_device(self.address)
         )
 
+        if not device:
+            self._logger.error("Failed to discover client.")
+            raise NetworkNotFoundError
+
         try:
             # TODO: Should we try to get access to the network name here?
             self._gattClient = await establish_connection(
@@ -109,10 +113,10 @@ class CasambiClient:
             )
         except BleakNotFoundError as e:
             # Guess that this is the error reason since ther are no better error types
-            self._logger.error("Failed to find client.", exc_info=1)
+            self._logger.error("Failed to find client.", exc_info=True)
             raise NetworkNotFoundError from e
         except BleakError as e:
-            self._logger.error("Failed to connect.", exc_info=1)
+            self._logger.error("Failed to connect.", exc_info=True)
             raise BluetoothError(e.args) from e
 
         self._logger.info(f"Connected to {self.address}")
@@ -125,7 +129,7 @@ class CasambiClient:
             self._disconnectedCallback()
         self._connectionState = ConnectionState.NONE
 
-    async def exchangeKey(self, keystore: KeyStore) -> Awaitable[None]:
+    async def exchangeKey(self, keystore: KeyStore) -> None:
         self._checkState(ConnectionState.CONNECTED)
 
         self._logger.info("Starting key exchange...")
@@ -200,7 +204,7 @@ class CasambiClient:
         finally:
             self._activityLock.release()
 
-    def _queueCallback(self, handle: int, data: bytes) -> None:
+    def _queueCallback(self, handle: BleakGATTCharacteristic, data: bytes) -> None:
         self._callbackQueue.put_nowait((handle, data))
 
     async def _processCallbacks(self) -> None:
@@ -213,7 +217,9 @@ class CasambiClient:
                 self._callbackQueue.task_done()
                 self._activityLock.release()
 
-    def _callbackMulitplexer(self, handle: int, data: bytes) -> None:
+    def _callbackMulitplexer(
+        self, handle: BleakGATTCharacteristic, data: bytes
+    ) -> None:
         self._logger.debug(f"Callback on handle {handle}: {b2a(data)}")
 
         if self._connectionState == ConnectionState.CONNECTED:
@@ -227,7 +233,7 @@ class CasambiClient:
                 f"Unhandled notify in state {self._connectionState}: {b2a(data)}"
             )
 
-    def _exchNofityCallback(self, handle: int, data: bytes) -> None:
+    def _exchNofityCallback(self, handle: BleakGATTCharacteristic, data: bytes) -> None:
         if data[0] == 0x2:
             # Parse device pubkey
             x, y = struct.unpack_from("<32s32s", data, 1)
@@ -273,7 +279,7 @@ class CasambiClient:
             self._connectionState = ConnectionState.ERROR
             self._notifySignal.set()
 
-    async def authenticate(self, keystore: KeyStore) -> Awaitable[None]:
+    async def authenticate(self, keystore: KeyStore) -> None:
         self._checkState(ConnectionState.KEY_EXCHANGED)
 
         self._logger.info(f"Authenicating channel...")
@@ -319,7 +325,7 @@ class CasambiClient:
         finally:
             self._activityLock.release()
 
-    def _authNofityCallback(self, handle: int, data: bytes) -> None:
+    def _authNofityCallback(self, handle: BleakGATTCharacteristic, data: bytes) -> None:
         self._logger.info("Processing authentication response...")
 
         # TODO: Verify counter
@@ -339,13 +345,13 @@ class CasambiClient:
         self._notifySignal.set()
 
     async def _writeEncPacket(
-        self, packet: bytes, id: int, char: BleakGATTCharacteristic
-    ) -> Awaitable[None]:
+        self, packet: bytes, id: int, char: Union[str, BleakGATTCharacteristic]
+    ) -> None:
         encPacket = self._encryptor.encryptThenMac(packet, self._getNonce(id))
         try:
             await self._gattClient.write_gatt_char(char, encPacket)
         except BleakError as e:
-            if e.args == "Not connected":
+            if e.args[0] == "Not connected":
                 self._connectionState = ConnectionState.NONE
             else:
                 raise e
@@ -355,7 +361,7 @@ class CasambiClient:
             id = id.to_bytes(4, "little")
         return self._nonce[:4] + id + self._nonce[8:]
 
-    async def send(self, packet: bytes) -> Awaitable[None]:
+    async def send(self, packet: bytes) -> None:
         self._checkState(ConnectionState.AUTHENTICATED)
 
         await self._activityLock.acquire()
@@ -376,7 +382,9 @@ class CasambiClient:
         finally:
             self._activityLock.release()
 
-    def _establishedNofityCallback(self, handle: int, data: bytes) -> None:
+    def _establishedNofityCallback(
+        self, handle: BleakGATTCharacteristic, data: bytes
+    ) -> None:
         # TODO: Check incoming counter and direction flag
         self._inPacketCount += 1
 
@@ -445,7 +453,7 @@ class CasambiClient:
                 f"Ran out of data while parsing unit state! Remaining data {b2a(data[oldPos:])} in {b2a(data)}."
             )
 
-    async def disconnect(self) -> Awaitable[None]:
+    async def disconnect(self) -> None:
         self._logger.info(f"Disconnecting...")
 
         if self._callbackTask:

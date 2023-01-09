@@ -43,7 +43,7 @@ class KeyStore:
         if id < 0:
             raise ValueError("id")
 
-        if any(filter(lambda k: k.id == id, self._keys)):
+        if any(filter(lambda k: k.id == id, self._keys)):  # type: ignore
             self._logger.info(f"Key with id {id} already exists. Skipping...")
             return
 
@@ -75,14 +75,14 @@ class KeyStore:
         self._logger.info(f"Added key {name} with role {role} to store.")
         self._save()
 
-    def clear(self, save=False):
+    def clear(self, save: bool = False) -> None:
         self._keys.clear()
         self._logger.info(f"Keystore cleared.")
         if save:
             self._save()
 
     def getKey(self) -> Optional[Key]:
-        key = None
+        key: Optional[Key] = None
         for k in self._keys:
             if not key:
                 key = k

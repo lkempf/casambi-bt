@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from re import sub
-from typing import Awaitable, Dict, List, Optional
+from typing import Optional, cast
 
 import httpx
 from httpx import AsyncClient
@@ -30,17 +30,17 @@ class _NetworkSession:
 
 
 class Network:
-    _session: _NetworkSession = None
+    _session: Optional[_NetworkSession] = None
 
-    _networkName: str = None
-    _networkRevision: int = None
+    _networkName: Optional[str] = None
+    _networkRevision: Optional[int] = None
 
-    _unitTypes: Dict[int, UnitType] = {}
-    units: List[Unit] = []
-    groups: List[Group] = []
-    scenes: List[Scene] = []
+    _unitTypes: dict[int, UnitType] = {}
+    units: list[Unit] = []
+    groups: list[Group] = []
+    scenes: list[Scene] = []
 
-    def __init__(self, id: str, httpClient: AsyncClient = None) -> None:
+    def __init__(self, id: str, httpClient: AsyncClient) -> None:
         self._logger = logging.getLogger(__name__)
         self._keystore = KeyStore(id)
         self._id = id
@@ -58,18 +58,6 @@ class Network:
         self._typeCachePath = basePath / "types.pck"
         if self._typeCachePath.exists():
             self._loadTypeCache()
-
-    @property
-    def name(self) -> str:
-        return self._networkName
-
-    @property
-    def id(self) -> str:
-        return self._id
-
-    @property
-    def revision(self) -> int:
-        return self._networkRevision
 
     def _loadSession(self) -> None:
         self._logger.info("Loading session...")
@@ -95,7 +83,7 @@ class Network:
     def getKeyStore(self) -> KeyStore:
         return self._keystore
 
-    async def logIn(self, password: str) -> Awaitable[bool]:
+    async def logIn(self, password: str) -> bool:
         self._logger.info(f"Logging in to network...")
         getSessionUrl = f"https://api.casambi.com/network/{self._id}/session"
 
@@ -116,7 +104,7 @@ class Network:
             self._logger.error(f"Login failed: {res.status_code}\n{res.text}")
             return False
 
-    async def update(self) -> Awaitable[None]:
+    async def update(self) -> None:
         self._logger.info(f"Updating network...")
         if not self.authenticated():
             raise AuthenticationError("Not authenticated!")
@@ -129,7 +117,7 @@ class Network:
         res = await self._httpClient.put(
             getNetworkUrl,
             json={"formatVersion": 1, "deviceName": DEVICE_NAME},
-            headers={"X-Casambi-Session": self._session.session},
+            headers={"X-Casambi-Session": self._session.session},  # type: ignore[union-attr]
         )
 
         if res.status_code != httpx.codes.OK:
@@ -208,7 +196,7 @@ class Network:
 
         self._logger.info("Network updated.")
 
-    async def _fetchUnitInfo(self, id: int) -> Awaitable[UnitType]:
+    async def _fetchUnitInfo(self, id: int) -> UnitType:
         self._logger.info(f"Fetching unit type for id {id}...")
 
         # Check whether unit type is already cached
@@ -244,12 +232,9 @@ class Network:
                 controlJson["length"],
                 controlJson["default"],
                 controlJson["readonly"],
+                controlJson["min"] if "min" in controlJson else None,
+                controlJson["max"] if "max" in controlJson else None,
             )
-
-            if "min" in controlJson:
-                controlObj.min = controlJson["min"]
-            if "max" in controlJson:
-                controlObj.max = controlJson["max"]
 
             controls.append(controlObj)
 
@@ -273,7 +258,7 @@ class Network:
         return None
 
 
-async def getNetworkIdFromUuid(mac: str, httpClient: AsyncClient) -> Awaitable[str]:
+async def getNetworkIdFromUuid(mac: str, httpClient: AsyncClient) -> Optional[str]:
     _logger = logging.getLogger(__name__)
     _logger.info(f"Getting network id...")
     getNetworkIdUrl = f"https://api.casambi.com/network/uuid/{mac.replace(':', '')}"
@@ -287,6 +272,6 @@ async def getNetworkIdFromUuid(mac: str, httpClient: AsyncClient) -> Awaitable[s
         _logger.error(f"Getting network id returned {res.status_code}")
         return None
 
-    id = res.json()["id"]
+    id = cast(str, res.json()["id"])
     _logger.info(f"Got network id {id}.")
     return id

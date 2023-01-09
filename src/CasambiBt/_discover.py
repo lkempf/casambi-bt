@@ -1,5 +1,4 @@
 import logging
-from typing import Awaitable, List
 
 from bleak import BleakScanner
 from bleak.backends.client import BLEDevice
@@ -11,7 +10,7 @@ from .errors import BluetoothError
 _LOGGER = logging.getLogger(__name__)
 
 
-async def discover() -> Awaitable[List[BLEDevice]]:
+async def discover() -> list[BLEDevice]:
     """Discover all Casambi networks in range.
 
     :return: A list of all discovered Casambi devices.
