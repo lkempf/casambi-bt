@@ -27,6 +27,9 @@ class UnitControlType(Enum):
     TEMPERATURE = 4
     """The temperature of the light can be adjusted."""
 
+    VERTICAL = 5
+    """The vertical value of the light can be adjusted."""
+
     UNKOWN = 99
     """State isn't implemented. Control saved for debuggin purposes."""
 
@@ -81,6 +84,7 @@ class UnitState:
     _rgb: Optional[Tuple[int, int, int]] = None
     _white: Optional[int] = None
     _temperature: Optional[int] = None
+    _vertical: Optional[int] = None
 
     def _check_range(self, value: int, min: int, max: int) -> None:
         if value < min or value > max:
@@ -102,6 +106,23 @@ class UnitState:
     @dimmer.deleter
     def dimmer(self) -> None:
         self._dimmer = None
+
+    VERTICAL_RESOLUTION: Final = 8
+    VERTICAL_MIN: Final = 0
+    VERTICAL_MAX: Final = 2**VERTICAL_RESOLUTION- 1
+
+    @property
+    def vertical(self) -> Optional[int]:
+        return self._vertical
+
+    @vertical.setter
+    def vertical(self, value: int) -> None:
+        self._check_range(value, self.VERTICAL_MIN, self.VERTICAL_MAX)
+        self._vertical = value
+
+    @vertical.deleter
+    def vertical(self) -> None:
+        self._vertical = None
 
     RGB_RESOLUTION: Final = 8
     RGB_MIN: Final = 0
@@ -177,7 +198,7 @@ class UnitState:
         self.temperature = None
 
     def __repr__(self) -> str:
-        return f"UnitState(dimmer={self.dimmer}, rgb={self.rgb.__repr__()}, white={self.white}, temperature={self.temperature})"
+        return f"UnitState(dimmer={self.dimmer}, vertical={self._vertical}, rgb={self.rgb.__repr__()}, white={self.white}, temperature={self.temperature})"
 
 
 # TODO: Make unit immutable (refactor state, on, online out of it)
@@ -243,6 +264,9 @@ class Unit:
             if c.type == UnitControlType.DIMMER and state.dimmer is not None:
                 scale = UnitState.DIMMER_RESOLUTION - c.length
                 scaledValue = state.dimmer >> scale
+            elif c.type == UnitControlType.VERTICAL and state.vertical is not None:
+                scale = UnitState.VERTICAL_RESOLUTION - c.length
+                scaledValue = state.vertical >> scale
             elif c.type == UnitControlType.RGB and state.rgb is not None:
                 hueLen = (c.length * 10) // 18
                 hueMask = 2**hueLen - 1
@@ -323,6 +347,9 @@ class Unit:
             if c.type == UnitControlType.DIMMER:
                 scale = UnitState.DIMMER_RESOLUTION - c.length
                 self._state.dimmer = cInt << scale
+            elif c.type == UnitControlType.VERTICAL:
+                scale = UnitState.VERTICAL_RESOLUTION - c.length
+                self._state.vertical = cInt << scale
             elif c.type == UnitControlType.RGB:
                 hueLen = (c.length * 10) // 18
                 hueMask = 2**hueLen - 1

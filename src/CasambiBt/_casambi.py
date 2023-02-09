@@ -169,6 +169,24 @@ class Casambi:
         payload = level.to_bytes(1, byteorder="big", signed=False)
         await self._send(target, payload, OpCode.SetLevel)
 
+    async def setVertical(self, target: Union[Unit, Group, None], vertical: int) -> None:
+        """Set the vertical (balance between top and bottom LED) for one or multiple units.
+
+        If ``target`` is of type ``Unit`` only this unit is affected.
+        If ``target`` is of type ``Group`` the whole group is affected.
+        if ``target`` is of type ``None`` all units in the network are affected.
+
+        :param target: One or multiple targeted units.
+        :param vertical: The desired vertical balance in range [0, 255]. If 0 the unit is turned off.
+        :return: Nothing is returned by this function. To get the new state register a change handler.
+        :raises ValueError: The supplied level isn't in range
+        """
+        if vertical < 0 or vertical > 255:
+            raise ValueError()
+
+        payload = vertical.to_bytes(1, byteorder="big", signed=False)
+        await self._send(target, payload, OpCode.SetVertical)
+
     async def setWhite(self, target: Union[Unit, Group, None], level: int) -> None:
         """Set the white level for one or multiple units.
 

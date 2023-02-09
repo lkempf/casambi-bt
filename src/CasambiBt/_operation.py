@@ -6,8 +6,10 @@ from enum import IntEnum, unique
 class OpCode(IntEnum):
     Response = 0
     SetLevel = 1
+    SetVertical = 4
     SetWhite = 5
     SetColor = 7
+    SetTemperature = 10
     SetState = 48
 
 
