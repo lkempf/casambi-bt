@@ -18,7 +18,7 @@ def _encHelper(cipher: Cipher, input: bytes) -> bytes:
     assert len(input) % 16 == 0
 
     context = cipher.encryptor()
-    return context.update(input) + context.finalize()  # type: ignore[no-any-return]
+    return context.update(input) + context.finalize()
 
 
 class Encryptor:

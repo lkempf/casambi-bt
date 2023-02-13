@@ -13,6 +13,7 @@ from ._constants import BASE_PATH, DEVICE_NAME
 from ._keystore import KeyStore
 from ._unit import Group, Scene, Unit, UnitControl, UnitControlType, UnitType
 from .errors import AuthenticationError, NetworkNotFoundError, NetworkUpdateError
+from ._cache import ensureCacheValid
 
 
 @dataclass()
@@ -50,6 +51,8 @@ class Network:
             basePath.mkdir(parents=True)
 
         self._httpClient = httpClient
+
+        ensureCacheValid()
 
         self._sessionPath = basePath / "session.pck"
         if self._sessionPath.exists():
