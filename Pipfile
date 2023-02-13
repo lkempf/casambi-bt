@@ -5,6 +5,7 @@ name = "pypi"
 
 [packages]
 bleak = ">=0.10"
+bleak_retry_connector = "*"
 cryptography = ">=3.4"
 httpx = ">=0.17"
 
