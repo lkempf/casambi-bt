@@ -249,6 +249,7 @@ class Unit:
     def online(self) -> bool:
         return self._online
 
+    # TODO: Add tests for this method
     def getStateAsBytes(self, state: UnitState) -> bytes:
         """Given a generic UnitState convert it into the internal state representation.
 
@@ -312,19 +313,17 @@ class Unit:
         # Pack state into bytes
         res = bytearray(self.unitType.stateLength)
         for off, len, val in values:
-            byteLen = (len - 1) // 8 + 1
+            val <<= off % 8
+            byteLen = (len + off % 8 - 1) // 8 + 1
             valBytes = val.to_bytes(byteLen, byteorder="little", signed=False)
             for i in range(byteLen):
-                if off % 8 == 0:
-                    res[off // 8] |= valBytes[i]
-                    off += 8
-                else:
-                    res[off // 8] |= valBytes[i] << (off % 8)
-                    off += off % 8
+                res[off // 8] |= valBytes[i]
+                off += 8 - off % 8
 
         _LOGGER.debug(f"Packing {values.__repr__()} as {res}")
         return bytes(res)
 
+    # TODO: Add tests for this method
     def setStateFromBytes(self, value: bytes) -> None:
         """Parse state bytes into a `UnitState` and set it for the current unit.
 
@@ -336,7 +335,7 @@ class Unit:
         # TODO: Support for resolutions >8 byte?
         for c in self.unitType.controls:
             # Extract all relevant bytes from the state
-            byteLen = (c.length - 1) // 8 + 1
+            byteLen = (c.length + c.offset % 8 - 1) // 8 + 1
             cBytes = value[c.offset // 8 : c.offset // 8 + byteLen]
 
             # Extract c.Length bits form the byte string
