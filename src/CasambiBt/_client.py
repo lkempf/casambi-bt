@@ -7,6 +7,7 @@ from hashlib import sha256
 from typing import Any, Callable, Optional, Union
 
 from bleak import BleakClient
+from bleak import BleakScanner
 from bleak.backends.characteristic import BleakGATTCharacteristic
 from bleak.backends.client import BLEDevice
 from bleak.exc import BleakError
@@ -66,7 +67,7 @@ class CasambiClient:
         dataCallback: Callable[[IncommingPacketType, dict[str, Any]], None],
         disonnectedCallback: Callable[[], None],
     ) -> None:
-        self._address_or_devive = address_or_device
+        self._address_or_device = address_or_device
         self.address = (
             address_or_device.address
             if isinstance(address_or_device, BLEDevice)
@@ -97,9 +98,10 @@ class CasambiClient:
 
         # To use bleak_retry_connector we need to have a BLEDevice so get one if we only have the address.
         device = (
-            self._address_or_devive
-            if isinstance(self._address_or_devive, BLEDevice)
-            else await get_device(self.address)
+            self._address_or_device
+            if isinstance(self._address_or_device, BLEDevice)
+ #           else await get_device(self.address) # works only on Linux
+            else await BleakScanner.find_device_by_address(self.address, timeout=10.0)
         )
 
         if not device:

@@ -41,7 +41,7 @@ class Network:
     groups: list[Group] = []
     scenes: list[Scene] = []
 
-    def __init__(self, id: str, httpClient: AsyncClient) -> None:
+    def __init__(self, id: str, httpClient: AsyncClient, cached: bool = False) -> None:
         self._logger = logging.getLogger(__name__)
         self._keystore = KeyStore(id)
         self._id = id
@@ -62,11 +62,16 @@ class Network:
         if self._typeCachePath.exists():
             self._loadTypeCache()
 
+        self._unitCachePath = basePath / "units.pck"
+        if (cached):
+            if self._unitCachePath.exists():
+                self._loadUnitCache()
+
     def _loadSession(self) -> None:
         self._logger.info("Loading session...")
         self._session = pickle.load(self._sessionPath.open("rb"))
 
-    def _saveSesion(self) -> None:
+    def _saveSession(self) -> None:
         self._logger.info("Saving session...")
         pickle.dump(self._session, self._sessionPath.open("wb"))
 
@@ -77,6 +82,14 @@ class Network:
     def _saveTypeCache(self) -> None:
         self._logger.info("Saving type cache...")
         pickle.dump(self._unitTypes, self._typeCachePath.open("wb"))
+
+    def _loadUnitCache(self) -> None:
+        self._logger.info("Loading unit cache...")
+        self.units = pickle.load(self._unitCachePath.open("rb"))
+
+    def _saveUnitCache(self) -> None:
+        self._logger.info("Saving unit cache...")
+        pickle.dump(self.units, self._unitCachePath.open("wb"))
 
     def authenticated(self) -> bool:
         if not self._session:
@@ -101,7 +114,7 @@ class Network:
             )
             self._session = _NetworkSession(**sessionJson)
             self._logger.info("Login sucessful.")
-            self._saveSesion()
+            self._saveSession()
             return True
         else:
             self._logger.error(f"Login failed: {res.status_code}\n{res.text}")
@@ -194,7 +207,7 @@ class Network:
             self.scenes.append(sObj)
 
         # TODO: Parse more stuff
-
+        self._saveUnitCache()
         self._saveTypeCache()
 
         self._logger.info("Network updated.")

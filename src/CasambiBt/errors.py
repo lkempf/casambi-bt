@@ -10,6 +10,8 @@ class CasambiBtError(RuntimeError):
 class NetworkNotFoundError(CasambiBtError):
     pass
 
+class CachedNetworkNotFoundError(CasambiBtError):
+    pass
 
 class NetworkUpdateError(CasambiBtError):
     pass

@@ -1,6 +1,7 @@
 import logging
 from binascii import b2a_hex as b2a
 from typing import Any, Callable, Optional, Union
+import pickle
 
 from bleak.backends.device import BLEDevice
 from httpx import AsyncClient
@@ -9,11 +10,13 @@ from ._client import CasambiClient, ConnectionState, IncommingPacketType
 from ._network import Network, getNetworkIdFromUuid
 from ._operation import OpCode, OperationsContext
 from ._unit import Group, Scene, Unit, UnitState
+from ._constants import BASE_PATH
 from .errors import (
     AuthenticationError,
     ConnectionStateError,
     NetworkNotFoundError,
     ProtocolError,
+    CachedNetworkNotFoundError,
 )
 
 
@@ -29,6 +32,7 @@ class Casambi:
     _opContext: OperationsContext
     _httpClient: AsyncClient
     _ownHttpClient: bool
+    _networks: dict[str, dict[str,str]] = {}
 
     _unitChangedCallbacks: list[Callable[[Unit], None]] = []
 
@@ -41,6 +45,18 @@ class Casambi:
         else:
             self._ownHttpClient = False
         self._httpClient = httpClient
+
+        self._networkCachePath = BASE_PATH / "networks.pck"
+        if self._networkCachePath.exists():
+            self._loadNetworkCache()
+
+    def _loadNetworkCache(self) -> None:
+        self._logger.info("Loading network cache ...")
+        self._networks = pickle.load(self._networkCachePath.open("rb"))
+
+    def _saveNetworkCache(self) -> None:
+        self._logger.info("Saving network cache...")
+        pickle.dump(self._networks, self._networkCachePath.open("wb"))
 
     def _checkNetwork(self) -> None:
         if not self._casaNetwork or not self._casaNetwork._networkRevision:
@@ -95,12 +111,12 @@ class Casambi:
         return self._casaClient._connectionState == ConnectionState.AUTHENTICATED
 
     async def connect(
-        self, addr_or_device: Union[str, BLEDevice], password: str
+        self, addr_or_device: Union[str, BLEDevice], password: str = ""
     ) -> None:
         """Connect and authenticate to a network.
 
         :param addr: The MAC address of the network or a BLEDevice. Use `discover` to find the address of a network.
-        :param password: The password for the network.
+        :param password: The password for the network. If no password was given, try to use the network-cache. 
         :raises AuthenticationError: The supplied password is invalid.
         :raises ProtocolError: The network did not follow the expected protocol.
         :raises NetworkNotFoundError: No network was found under the supplied address.
@@ -118,16 +134,33 @@ class Casambi:
             addr_or_device, self._dataCallback, self._disconnect_callback
         )
 
-        # Retrieve network information
-        networkId = await getNetworkIdFromUuid(addr, self._httpClient)
-        if not networkId:
-            raise NetworkNotFoundError
-        self._casaNetwork = Network(networkId, self._httpClient)
-        if not self._casaNetwork.authenticated():
-            loggedIn = await self._casaNetwork.logIn(password)
-            if not loggedIn:
-                raise AuthenticationError("Login failed")
-        await self._casaNetwork.update()
+        if (password == ""):
+            # try to load from cache
+            self._logger.debug(f"Trying to load network from cache ...")
+            if (addr in self._networks):
+                networkId=self._networks[addr]["networkId"]
+                networkRevision=self._networks[addr]["networkRevision"]
+                if not networkId or not networkRevision:
+                    raise CachedNetworkNotFoundError
+                self._logger.debug(f"Loaded {networkId} for address {addr}...")
+                self._casaNetwork = Network(networkId, self._httpClient,True)
+                self._casaNetwork._networkRevision=networkRevision
+                self._casaNetwork._networkName=self._networks[addr]["name"]
+            else:
+                raise CachedNetworkNotFoundError
+        else:
+            # Retrieve network information
+            networkId = await getNetworkIdFromUuid(addr, self._httpClient)
+            if not networkId:
+                raise NetworkNotFoundError
+            self._casaNetwork = Network(networkId, self._httpClient)
+            if not self._casaNetwork.authenticated():
+                loggedIn = await self._casaNetwork.logIn(password)
+                if not loggedIn:
+                    raise AuthenticationError("Login failed")
+            await self._casaNetwork.update()
+            self._networks[addr]={"name":self._casaNetwork._networkName, "networkId":self._casaNetwork._id, "networkRevision":self._casaNetwork._networkRevision}
+            self._saveNetworkCache()
 
         await self._connectClient()
 
@@ -177,7 +210,7 @@ class Casambi:
         if ``target`` is of type ``None`` all units in the network are affected.
 
         :param target: One or multiple targeted units.
-        :param vertical: The desired vertical balance in range [0, 255]. If 0 the unit is turned off.
+        :param vertical: The desired level in range [0, 255]. If 0 the unit is turned off.
         :return: Nothing is returned by this function. To get the new state register a change handler.
         :raises ValueError: The supplied level isn't in range
         """
