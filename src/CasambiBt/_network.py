@@ -11,8 +11,7 @@ from ._cache import getCacheDir
 from ._constants import DEVICE_NAME
 from ._keystore import KeyStore
 from ._unit import Group, Scene, Unit, UnitControl, UnitControlType, UnitType
-from .errors import (AuthenticationError, NetworkNotFoundError,
-                     NetworkUpdateError)
+from .errors import AuthenticationError, NetworkNotFoundError, NetworkUpdateError
 
 
 @dataclass()
@@ -40,20 +39,20 @@ class Network:
     groups: list[Group] = []
     scenes: list[Scene] = []
 
-    def __init__(self, id: str, httpClient: AsyncClient) -> None:
+    def __init__(self, uuid: str, httpClient: AsyncClient) -> None:
         self._logger = logging.getLogger(__name__)
-        self._keystore = KeyStore(id)
-        self._id = id
 
+        self._uuid = uuid
         self._httpClient = httpClient
 
-        basePath = getCacheDir(id)
+        self._cachePath = getCacheDir(uuid)
+        self._keystore = KeyStore(self._cachePath)
 
-        self._sessionPath = basePath / "session.pck"
+        self._sessionPath = self._cachePath / "session.pck"
         if self._sessionPath.exists():
             self._loadSession()
 
-        self._typeCachePath = basePath / "types.pck"
+        self._typeCachePath = self._cachePath / "types.pck"
         if self._typeCachePath.exists():
             self._loadTypeCache()
 
@@ -73,6 +72,27 @@ class Network:
         self._logger.info("Saving type cache...")
         pickle.dump(self._unitTypes, self._typeCachePath.open("wb"))
 
+    async def getNetworkId(self) -> None:
+        _logger = logging.getLogger(__name__)
+        _logger.info(f"Getting network id...")
+
+        # TODO: Use cache
+
+        getNetworkIdUrl = f"https://api.casambi.com/network/uuid/{self._uuid}"
+        res = await self._httpClient.get(getNetworkIdUrl)
+
+        if res.status_code == httpx.codes.NOT_FOUND:
+            raise NetworkNotFoundError(
+                "API failed to find network. Is your network configured correctly?"
+            )
+        if res.status_code != httpx.codes.OK:
+            raise NetworkNotFoundError(
+                f"Getting network id returned unexpected status {res.status_code}"
+            )
+
+        self._id = cast(str, res.json()["id"])
+        _logger.info(f"Got network id {self._id}.")
+
     def authenticated(self) -> bool:
         if not self._session:
             return False
@@ -82,6 +102,8 @@ class Network:
         return self._keystore
 
     async def logIn(self, password: str) -> bool:
+        await self.getNetworkId()
+
         self._logger.info(f"Logging in to network...")
         getSessionUrl = f"https://api.casambi.com/network/{self._id}/session"
 
@@ -254,22 +276,3 @@ class Network:
 
     async def disconnect(self) -> None:
         return None
-
-
-async def getNetworkIdFromUuid(mac: str, httpClient: AsyncClient) -> Optional[str]:
-    _logger = logging.getLogger(__name__)
-    _logger.info(f"Getting network id...")
-    getNetworkIdUrl = f"https://api.casambi.com/network/uuid/{mac.replace(':', '')}"
-    res = await httpClient.get(getNetworkIdUrl)
-
-    if res.status_code == httpx.codes.NOT_FOUND:
-        raise NetworkNotFoundError(
-            "API failed to find network. Is your network configured correctly?"
-        )
-    if res.status_code != httpx.codes.OK:
-        _logger.error(f"Getting network id returned {res.status_code}")
-        return None
-
-    id = cast(str, res.json()["id"])
-    _logger.info(f"Got network id {id}.")
-    return id

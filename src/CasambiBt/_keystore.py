@@ -2,6 +2,7 @@ import binascii
 import logging
 import pickle
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, List, Optional
 
 from ._cache import getCacheDir
@@ -20,9 +21,8 @@ class KeyStore:
     _keys: List[Key] = []
     _logger = logging.getLogger(__name__)
 
-    def __init__(self, networkId: str) -> None:
-        self._networkId = networkId
-        self._storePath = getCacheDir(networkId) / "keys.pck"
+    def __init__(self, cacheDir: Path) -> None:
+        self._storePath = cacheDir / "keys.pck"
         if self._storePath.exists():
             self._load()
 

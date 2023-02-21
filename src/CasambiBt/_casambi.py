@@ -1,3 +1,4 @@
+from itertools import pairwise
 import logging
 from binascii import b2a_hex as b2a
 from typing import Any, Callable, Optional, Union
@@ -6,11 +7,10 @@ from bleak.backends.device import BLEDevice
 from httpx import AsyncClient
 
 from ._client import CasambiClient, ConnectionState, IncommingPacketType
-from ._network import Network, getNetworkIdFromUuid
+from ._network import Network
 from ._operation import OpCode, OperationsContext
 from ._unit import Group, Scene, Unit, UnitState
-from .errors import (AuthenticationError, ConnectionStateError,
-                     NetworkNotFoundError, ProtocolError)
+from .errors import AuthenticationError, ConnectionStateError, ProtocolError
 
 
 class Casambi:
@@ -106,6 +106,9 @@ class Casambi:
         if isinstance(addr_or_device, BLEDevice):
             addr = addr_or_device.address
         else:
+            # Add colons if necessary.
+            if ":" not in addr_or_device:
+                addr_or_device = ":".join(["".join(p) for p in pairwise(addr)][::2])
             addr = addr_or_device
 
         self._logger.info(f"Trying to connect to casambi network {addr}...")
@@ -115,10 +118,8 @@ class Casambi:
         )
 
         # Retrieve network information
-        networkId = await getNetworkIdFromUuid(addr, self._httpClient)
-        if not networkId:
-            raise NetworkNotFoundError
-        self._casaNetwork = Network(networkId, self._httpClient)
+        uuid = addr.replace(":", "").lower()
+        self._casaNetwork = Network(uuid, self._httpClient)
         if not self._casaNetwork.authenticated():
             loggedIn = await self._casaNetwork.logIn(password)
             if not loggedIn:
@@ -165,7 +166,9 @@ class Casambi:
         payload = level.to_bytes(1, byteorder="big", signed=False)
         await self._send(target, payload, OpCode.SetLevel)
 
-    async def setVertical(self, target: Union[Unit, Group, None], vertical: int) -> None:
+    async def setVertical(
+        self, target: Union[Unit, Group, None], vertical: int
+    ) -> None:
         """Set the vertical (balance between top and bottom LED) for one or multiple units.
 
         If ``target`` is of type ``Unit`` only this unit is affected.

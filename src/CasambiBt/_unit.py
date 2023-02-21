@@ -7,6 +7,7 @@ from typing import Final, List, Optional, Tuple
 
 _LOGGER = logging.getLogger(__name__)
 
+
 # Numbers are totally arbitrary so far.
 @unique
 class UnitControlType(Enum):
@@ -109,7 +110,7 @@ class UnitState:
 
     VERTICAL_RESOLUTION: Final = 8
     VERTICAL_MIN: Final = 0
-    VERTICAL_MAX: Final = 2**VERTICAL_RESOLUTION- 1
+    VERTICAL_MAX: Final = 2**VERTICAL_RESOLUTION - 1
 
     @property
     def vertical(self) -> Optional[int]:

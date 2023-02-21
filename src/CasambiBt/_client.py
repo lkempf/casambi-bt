@@ -10,8 +10,7 @@ from bleak import BleakClient
 from bleak.backends.characteristic import BleakGATTCharacteristic
 from bleak.backends.client import BLEDevice
 from bleak.exc import BleakError
-from bleak_retry_connector import (BleakNotFoundError, establish_connection,
-                                   get_device)
+from bleak_retry_connector import BleakNotFoundError, establish_connection, get_device
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric import ec
 
@@ -29,8 +28,12 @@ class ConnectionState(IntEnum):
     ERROR = 99
 
 
-from .errors import (BluetoothError, ConnectionStateError,
-                     NetworkNotFoundError, ProtocolError)
+from .errors import (
+    BluetoothError,
+    ConnectionStateError,
+    NetworkNotFoundError,
+    ProtocolError,
+)
 
 
 @unique

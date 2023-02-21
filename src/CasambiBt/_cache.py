@@ -3,7 +3,6 @@ import shutil
 from pathlib import Path
 from typing import Final
 
-
 CACHE_PATH: Final = Path(os.getcwd()) / "casambi-bt-store"
 CACHE_VERSION: Final = 1
 CACHE_VER_FILE: Final = CACHE_PATH / ".cachever"
