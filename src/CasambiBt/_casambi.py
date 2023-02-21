@@ -1,6 +1,6 @@
-from itertools import pairwise
 import logging
 from binascii import b2a_hex as b2a
+from itertools import pairwise
 from typing import Any, Callable, Optional, Union
 
 from bleak.backends.device import BLEDevice
