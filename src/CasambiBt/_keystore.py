@@ -2,10 +2,9 @@ import binascii
 import logging
 import pickle
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Dict, List, Optional
 
-from ._constants import BASE_PATH
+from ._cache import getCacheDir
 
 
 @dataclass()
@@ -23,7 +22,7 @@ class KeyStore:
 
     def __init__(self, networkId: str) -> None:
         self._networkId = networkId
-        self._storePath = Path(BASE_PATH / networkId / "keys.pck")
+        self._storePath = getCacheDir(networkId) / "keys.pck"
         if self._storePath.exists():
             self._load()
 

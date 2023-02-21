@@ -1,8 +1,4 @@
-import os
-from pathlib import Path
 from typing import Final
-
-BASE_PATH: Final = Path(os.getcwd()) / "casambi-bt-store"
 
 DEVICE_NAME: Final = "Casambi BT Python"
 

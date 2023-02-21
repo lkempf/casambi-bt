@@ -2,18 +2,17 @@ import logging
 import pickle
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
-from re import sub
 from typing import Optional, cast
 
 import httpx
 from httpx import AsyncClient
 
-from ._constants import BASE_PATH, DEVICE_NAME
+from ._cache import getCacheDir
+from ._constants import DEVICE_NAME
 from ._keystore import KeyStore
 from ._unit import Group, Scene, Unit, UnitControl, UnitControlType, UnitType
-from .errors import AuthenticationError, NetworkNotFoundError, NetworkUpdateError
-from ._cache import ensureCacheValid
+from .errors import (AuthenticationError, NetworkNotFoundError,
+                     NetworkUpdateError)
 
 
 @dataclass()
@@ -45,14 +44,10 @@ class Network:
         self._logger = logging.getLogger(__name__)
         self._keystore = KeyStore(id)
         self._id = id
-        basePath = Path(BASE_PATH / id)
-
-        if not basePath.exists():
-            basePath.mkdir(parents=True)
 
         self._httpClient = httpClient
 
-        ensureCacheValid()
+        basePath = getCacheDir(id)
 
         self._sessionPath = basePath / "session.pck"
         if self._sessionPath.exists():
