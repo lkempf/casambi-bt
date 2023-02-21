@@ -9,12 +9,8 @@ from ._client import CasambiClient, ConnectionState, IncommingPacketType
 from ._network import Network, getNetworkIdFromUuid
 from ._operation import OpCode, OperationsContext
 from ._unit import Group, Scene, Unit, UnitState
-from .errors import (
-    AuthenticationError,
-    ConnectionStateError,
-    NetworkNotFoundError,
-    ProtocolError,
-)
+from .errors import (AuthenticationError, ConnectionStateError,
+                     NetworkNotFoundError, ProtocolError)
 
 
 class Casambi:
