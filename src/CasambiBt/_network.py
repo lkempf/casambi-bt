@@ -101,7 +101,12 @@ class Network:
     def getKeyStore(self) -> KeyStore:
         return self._keystore
 
-    async def logIn(self, password: str) -> bool:
+    async def logIn(self, password: str) -> None:
+        await self.getNetworkId()
+
+        if self.authenticated():
+            return
+
         self._logger.info(f"Logging in to network...")
         getSessionUrl = f"https://api.casambi.com/network/{self._id}/session"
 
@@ -117,10 +122,8 @@ class Network:
             self._session = _NetworkSession(**sessionJson)
             self._logger.info("Login sucessful.")
             self._saveSesion()
-            return True
         else:
-            self._logger.error(f"Login failed: {res.status_code}\n{res.text}")
-            return False
+            raise AuthenticationError(f"Login failed: {res.status_code}\n{res.text}")
 
     async def update(self) -> None:
         self._logger.info(f"Updating network...")
