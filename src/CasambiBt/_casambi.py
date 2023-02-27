@@ -120,6 +120,7 @@ class Casambi:
         # Retrieve network information
         uuid = addr.replace(":", "").lower()
         self._casaNetwork = Network(uuid, self._httpClient)
+        await self._casaNetwork.getNetworkId()
         if not self._casaNetwork.authenticated():
             loggedIn = await self._casaNetwork.logIn(password)
             if not loggedIn:

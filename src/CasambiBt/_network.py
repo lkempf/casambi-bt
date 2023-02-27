@@ -102,8 +102,6 @@ class Network:
         return self._keystore
 
     async def logIn(self, password: str) -> bool:
-        await self.getNetworkId()
-
         self._logger.info(f"Logging in to network...")
         getSessionUrl = f"https://api.casambi.com/network/{self._id}/session"
 
