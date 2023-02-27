@@ -121,6 +121,7 @@ class Casambi:
         uuid = addr.replace(":", "").lower()
         self._casaNetwork = Network(uuid, self._httpClient)
         await self._casaNetwork.logIn(password)
+        await self._casaNetwork.update()
         await self._connectClient()
 
     async def _connectClient(self) -> None:
