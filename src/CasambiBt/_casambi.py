@@ -120,12 +120,8 @@ class Casambi:
         # Retrieve network information
         uuid = addr.replace(":", "").lower()
         self._casaNetwork = Network(uuid, self._httpClient)
-        if not self._casaNetwork.authenticated():
-            loggedIn = await self._casaNetwork.logIn(password)
-            if not loggedIn:
-                raise AuthenticationError("Login failed")
+        await self._casaNetwork.logIn(password)
         await self._casaNetwork.update()
-
         await self._connectClient()
 
     async def _connectClient(self) -> None:
