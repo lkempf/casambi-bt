@@ -240,7 +240,6 @@ class Unit:
         if (
             self.unitType.get_control(UnitControlType.DIMMER)
             and self._state
-            and self._state.dimmer
         ):
             return self._on and self._state.dimmer > 0
         else:
