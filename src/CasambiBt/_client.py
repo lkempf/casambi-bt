@@ -407,7 +407,7 @@ class CasambiClient:
             # In the future we might want to parse the revision and issue a warning if there is a mismatch.
             pass
         else:
-            self._logger.warning(f"Packet type {packetType} not implemented. Ignoring!")
+            self._logger.info(f"Packet type {packetType} not implemented. Ignoring!")
 
     def _parseUnitStates(self, data: bytes) -> None:
         self._logger.info("Parsing incoming unit states...")
