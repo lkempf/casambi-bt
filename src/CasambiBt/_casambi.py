@@ -95,7 +95,7 @@ class Casambi:
     ) -> None:
         """Connect and authenticate to a network.
 
-        :param addr: The MAC address of the network or a BLEDevice. Use `discover` to find the address of a network.
+        :param addr_or_device: The MAC address of the network or a BLEDevice. Use `discover` to find the address of a network.
         :param password: The password for the network.
         :raises AuthenticationError: The supplied password is invalid.
         :raises ProtocolError: The network did not follow the expected protocol.
@@ -108,7 +108,7 @@ class Casambi:
         else:
             # Add colons if necessary.
             if ":" not in addr_or_device:
-                addr_or_device = ":".join(["".join(p) for p in pairwise(addr)][::2])
+                addr_or_device = ":".join(["".join(p) for p in pairwise(addr_or_device)][::2])
             addr = addr_or_device
 
         self._logger.info(f"Trying to connect to casambi network {addr}...")
