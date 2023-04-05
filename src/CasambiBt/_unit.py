@@ -237,10 +237,7 @@ class Unit:
     @property
     def is_on(self) -> bool:
         """Determine whether the unit is turned on."""
-        if (
-            self.unitType.get_control(UnitControlType.DIMMER)
-            and self._state
-        ):
+        if self.unitType.get_control(UnitControlType.DIMMER) and self._state:
             return self._on and self._state.dimmer > 0
         else:
             return self._on
@@ -386,7 +383,9 @@ class Unit:
                 self._state.temperature = int(((cInt / tempMask) * tempRange) + c.min)
             elif c.type == UnitControlType.UNKOWN:
                 # Might be useful for implementing more state types
-                _LOGGER.debug(f"Value for unkown control type at {c.offset}: {cInt}")
+                _LOGGER.debug(
+                    f"Value for unkown control type at {c.offset}: {cInt}. Unit type is {self.unitType.id}."
+                )
 
         _LOGGER.debug(f"Parsed {b2a(value)} to {self.state.__repr__()}")
 
