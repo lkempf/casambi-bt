@@ -1,0 +1,21 @@
+name: Lint
+on: [ push, pull_request ]
+jobs:
+  ruff:
+    runs-on: ubuntu-lateststrategy:
+    matrix:
+      python-version: ["3.10"]
+    steps:
+      - uses: actions/checkout@v3- name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v3
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        uses: VaultVulp/action-pipenv@v2.0.1
+        with:
+          command: update --dev
+      - uses: isort/isort-action@master
+      - uses: psf/black@stable
+      - uses: chartboost/ruff-action@v1
+      - uses: jpetrucciani/mypy-check@master

@@ -47,6 +47,8 @@ ignore = [
     "E731",  # do not assign a lambda expression, use a def
 ]
 
+exclude = ["demo.py"]
+
 [tool.ruff.pyupgrade]
 keep-runtime-typing = true
 

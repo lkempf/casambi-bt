@@ -7,7 +7,7 @@ _LOGGER = logging.getLogger()
 _LOGGER.addHandler(logging.StreamHandler())
 
 
-async def main():
+async def main() -> None:
     logging.getLogger("CasambiBt").setLevel(logging.DEBUG)
 
     # Discover networks
