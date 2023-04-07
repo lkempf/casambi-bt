@@ -5,8 +5,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from ._cache import getCacheDir
-
 
 @dataclass()
 class Key:
@@ -18,10 +16,10 @@ class Key:
 
 
 class KeyStore:
-    _keys: List[Key] = []
-    _logger = logging.getLogger(__name__)
-
     def __init__(self, cacheDir: Path) -> None:
+        self._keys: List[Key] = []
+        self._logger = logging.getLogger(__name__)
+
         self._storePath = cacheDir / "keys.pck"
         if self._storePath.exists():
             self._load()

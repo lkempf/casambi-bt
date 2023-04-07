@@ -1,7 +1,7 @@
 import logging
 from binascii import b2a_hex as b2a
 from itertools import pairwise  # type: ignore[attr-defined]
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional, Union, cast
 
 from bleak.backends.device import BLEDevice
 from httpx import AsyncClient, NetworkError
@@ -10,7 +10,7 @@ from ._client import CasambiClient, ConnectionState, IncommingPacketType
 from ._network import Network
 from ._operation import OpCode, OperationsContext
 from ._unit import Group, Scene, Unit, UnitState
-from .errors import AuthenticationError, ConnectionStateError, ProtocolError
+from .errors import ConnectionStateError, ProtocolError
 
 
 class Casambi:
@@ -20,15 +20,12 @@ class Casambi:
     e.g. ``Network`` or ``CasambiClient``, directly.
     """
 
-    _casaClient: CasambiClient
-    _casaNetwork: Optional[Network]
-    _opContext: OperationsContext
-    _httpClient: AsyncClient
-    _ownHttpClient: bool
-
-    _unitChangedCallbacks: list[Callable[[Unit], None]] = []
-
     def __init__(self, httpClient: Optional[AsyncClient] = None) -> None:
+        self._casaClient: Optional[CasambiClient] = None
+        self._casaNetwork: Optional[Network] = None
+
+        self._unitChangedCallbacks: list[Callable[[Unit], None]] = []
+
         self._logger = logging.getLogger(__name__)
         self._opContext = OperationsContext()
         if not httpClient:
@@ -88,7 +85,10 @@ class Casambi:
     @property
     def connected(self) -> bool:
         """Check whether there is an active connection to the network."""
-        return self._casaClient._connectionState == ConnectionState.AUTHENTICATED
+        return (
+            self._casaClient is not None
+            and self._casaClient._connectionState == ConnectionState.AUTHENTICATED
+        )
 
     async def connect(
         self,
@@ -100,9 +100,11 @@ class Casambi:
 
         :param addr: The MAC address of the network or a BLEDevice. Use `discover` to find the address of a network.
         :param password: The password for the network.
+        :param forceOffline: Whether to avoid contacting the casambi servers.
         :raises AuthenticationError: The supplied password is invalid.
         :raises ProtocolError: The network did not follow the expected protocol.
         :raises NetworkNotFoundError: No network was found under the supplied address.
+        :raises NetworkOnlineUpdateNeededError: An offline update isn't possible in the current state.
         :raises BluetoothError: An error occurred in the bluetooth stack.
         """
 
@@ -137,6 +139,7 @@ class Casambi:
 
     async def _connectClient(self) -> None:
         """Initiate the bluetooth connection."""
+        self._casaClient = cast(CasambiClient, self._casaClient)
         await self._casaClient.connect()
         try:
             await self._casaClient.exchangeKey(self._casaNetwork.getKeyStore())  # type: ignore[union-attr]
@@ -268,6 +271,12 @@ class Casambi:
     async def _send(
         self, target: Union[Unit, Group, Scene, None], state: bytes, opcode: OpCode
     ) -> None:
+        if self._casaClient is None:
+            raise ConnectionStateError(
+                ConnectionState.AUTHENTICATED,
+                ConnectionState.NONE,
+            )
+
         targetCode = 0
         if isinstance(target, Unit):
             assert target.deviceId <= 0xFF

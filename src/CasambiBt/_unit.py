@@ -81,11 +81,12 @@ class UnitType:
 class UnitState:
     """Parsed representation of the state of a unit."""
 
-    _dimmer: Optional[int] = None
-    _rgb: Optional[Tuple[int, int, int]] = None
-    _white: Optional[int] = None
-    _temperature: Optional[int] = None
-    _vertical: Optional[int] = None
+    def __init__(self) -> None:
+        self._dimmer: Optional[int] = None
+        self._rgb: Optional[Tuple[int, int, int]] = None
+        self._white: Optional[int] = None
+        self._temperature: Optional[int] = None
+        self._vertical: Optional[int] = None
 
     def _check_range(self, value: int, min: int, max: int) -> None:
         if value < min or value > max:
@@ -238,7 +239,9 @@ class Unit:
     def is_on(self) -> bool:
         """Determine whether the unit is turned on."""
         if self.unitType.get_control(UnitControlType.DIMMER) and self._state:
-            return self._on and self._state.dimmer != None and self._state.dimmer > 0  # type: ignore[operator]
+            return (
+                self._on and self._state.dimmer is not None and self._state.dimmer > 0
+            )
         else:
             return self._on
 

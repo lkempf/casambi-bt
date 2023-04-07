@@ -35,17 +35,17 @@ class _NetworkSession:
 
 
 class Network:
-    _session: Optional[_NetworkSession] = None
-
-    _networkName: Optional[str] = None
-    _networkRevision: Optional[int] = None
-
-    _unitTypes: dict[int, UnitType] = {}
-    units: list[Unit] = []
-    groups: list[Group] = []
-    scenes: list[Scene] = []
-
     def __init__(self, uuid: str, httpClient: AsyncClient) -> None:
+        self._session: Optional[_NetworkSession] = None
+
+        self._networkName: Optional[str] = None
+        self._networkRevision: Optional[int] = None
+
+        self._unitTypes: dict[int, UnitType] = {}
+        self.units: list[Unit] = []
+        self.groups: list[Group] = []
+        self.scenes: list[Scene] = []
+
         self._logger = logging.getLogger(__name__)
         # TODO: Create LoggingAdapter to prepend uuid.
 

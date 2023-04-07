@@ -43,29 +43,29 @@ class IncommingPacketType(IntEnum):
 
 
 class CasambiClient:
-    _gattClient: BleakClient
-    _notifySignal: asyncio.Event
-
-    _mtu: int
-    _unitId: int
-    _flags: int
-    _nonce: bytes
-    _key: bytearray
-
-    _encryptor: Encryptor
-
-    _outPacketCount: int
-    _inPacketCount: int
-
-    _callbackQueue: asyncio.Queue[tuple[BleakGATTCharacteristic, bytes]]
-    _callbackTask: Optional[asyncio.Task[None]]
-
     def __init__(
         self,
         address_or_device: Union[str, BLEDevice],
         dataCallback: Callable[[IncommingPacketType, dict[str, Any]], None],
         disonnectedCallback: Callable[[], None],
     ) -> None:
+        self._gattClient: BleakClient
+        self._notifySignal = asyncio.Event()
+
+        self._mtu: int
+        self._unitId: int
+        self._flags: int
+        self._nonce: bytes
+        self._key: bytearray
+
+        self._encryptor: Encryptor
+
+        self._outPacketCount = 0
+        self._inPacketCount = 0
+
+        self._callbackQueue: asyncio.Queue[tuple[BleakGATTCharacteristic, bytes]]
+        self._callbackTask: Optional[asyncio.Task[None]] = None
+
         self._address_or_devive = address_or_device
         self.address = (
             address_or_device.address
@@ -156,7 +156,6 @@ class CasambiClient:
             )
 
             # Device will initiate key exchange, so listen for that
-            self._notifySignal = asyncio.Event()
             self._logger.debug(f"Starting notify")
             await self._gattClient.start_notify(
                 CASA_AUTH_CHAR_UUID, self._queueCallback

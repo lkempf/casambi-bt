@@ -14,8 +14,9 @@ class OpCode(IntEnum):
 
 
 class OperationsContext:
-    origin: int = 1
-    lifetime: int = 5
+    def __init__(self) -> None:
+        self.origin: int = 1
+        self.lifetime: int = 5
 
     def prepareOperation(self, op: OpCode, target: int, payload: bytes) -> bytes:
         if len(payload) > 63:
