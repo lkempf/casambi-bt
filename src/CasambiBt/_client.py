@@ -22,6 +22,12 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from ._constants import CASA_AUTH_CHAR_UUID
 from ._encryption import Encryptor
 from ._keystore import KeyStore
+from .errors import (
+    BluetoothError,
+    ConnectionStateError,
+    NetworkNotFoundError,
+    ProtocolError,
+)
 
 
 @unique
@@ -31,14 +37,6 @@ class ConnectionState(IntEnum):
     KEY_EXCHANGED = 2
     AUTHENTICATED = 3
     ERROR = 99
-
-
-from .errors import (
-    BluetoothError,
-    ConnectionStateError,
-    NetworkNotFoundError,
-    ProtocolError,
-)
 
 
 @unique
@@ -163,7 +161,7 @@ class CasambiClient:
             )
 
             # Device will initiate key exchange, so listen for that
-            self._logger.debug(f"Starting notify")
+            self._logger.debug("Starting notify")
             await self._gattClient.start_notify(
                 CASA_AUTH_CHAR_UUID, self._queueCallback
             )
@@ -288,7 +286,7 @@ class CasambiClient:
     async def authenticate(self, keystore: KeyStore) -> None:
         self._checkState(ConnectionState.KEY_EXCHANGED)
 
-        self._logger.info(f"Authenicating channel...")
+        self._logger.info("Authenicating channel...")
         key = keystore.getKey()  # Session key
 
         if not key:
@@ -338,9 +336,7 @@ class CasambiClient:
         self._inPacketCount += 1
 
         try:
-            response = self._encryptor.decryptAndVerify(
-                data, data[:4] + self._nonce[4:]
-            )
+            self._encryptor.decryptAndVerify(data, data[:4] + self._nonce[4:])
         except InvalidSignature:
             self._logger.fatal("Invalid signature for auth response!")
             self._connectionState = ConnectionState.ERROR
@@ -460,7 +456,7 @@ class CasambiClient:
             )
 
     async def disconnect(self) -> None:
-        self._logger.info(f"Disconnecting...")
+        self._logger.info("Disconnecting...")
 
         if self._callbackTask:
             self._callbackTask.cancel()
@@ -470,4 +466,4 @@ class CasambiClient:
             await self._gattClient.disconnect()
 
         self._connectionState = ConnectionState.NONE
-        self._logger.info(f"Disconnected.")
+        self._logger.info("Disconnected.")

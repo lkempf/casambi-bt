@@ -300,7 +300,7 @@ class Casambi:
             await self._casaClient.send(opPkt)
         except ConnectionStateError as exc:
             if exc.got == ConnectionState.NONE:
-                self._logger.info(f"Trying to reconnect broken connection once.")
+                self._logger.info("Trying to reconnect broken connection once.")
                 await self._connectClient()
                 await self._casaClient.send(opPkt)
             else:

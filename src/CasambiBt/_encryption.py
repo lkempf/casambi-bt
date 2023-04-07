@@ -1,6 +1,4 @@
-import binascii
 import logging
-import sys
 from binascii import b2a_hex as b2a
 
 from cryptography.hazmat.primitives.ciphers import Cipher

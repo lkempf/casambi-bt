@@ -81,9 +81,9 @@ class Network:
         pickle.dump(self._unitTypes, self._typeCachePath.open("wb"))
 
     async def getNetworkId(self, forceOffline: bool = False) -> None:
-        self._logger.info(f"Getting network id...")
+        self._logger.info("Getting network id...")
 
-        networkCacheFile = self._cachePath / f"networkid"
+        networkCacheFile = self._cachePath / "networkid"
 
         if networkCacheFile.exists():
             self._id = networkCacheFile.read_text()
@@ -138,7 +138,7 @@ class Network:
         if self.authenticated() or forceOffline:
             return
 
-        self._logger.info(f"Logging in to network...")
+        self._logger.info("Logging in to network...")
         getSessionUrl = f"https://api.casambi.com/network/{self._id}/session"
 
         res = await self._httpClient.post(
@@ -157,11 +157,11 @@ class Network:
             raise AuthenticationError(f"Login failed: {res.status_code}\n{res.text}")
 
     async def update(self, forceOffline: bool = False) -> None:
-        self._logger.info(f"Updating network...")
+        self._logger.info("Updating network...")
         if not self.authenticated() and not forceOffline:
             raise AuthenticationError("Not authenticated!")
 
-        assert self._id != None, "Network id must be set."
+        assert self._id is not None, "Network id must be set."
 
         # TODO: Save and send revision to receive actual updates?
 

@@ -3,7 +3,7 @@ import logging
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Optional
 
 
 @dataclass()
@@ -17,7 +17,7 @@ class Key:
 
 class KeyStore:
     def __init__(self, cacheDir: Path) -> None:
-        self._keys: List[Key] = []
+        self._keys: list[Key] = []
         self._logger = logging.getLogger(__name__)
 
         self._storePath = cacheDir / "keys.pck"
@@ -33,7 +33,7 @@ class KeyStore:
         self._logger.info("Saving keys...")
         pickle.dump(self._keys, (self._storePath.open("wb")))
 
-    def addKey(self, dict: Dict) -> None:
+    def addKey(self, dict: dict) -> None:
         if "id" not in dict:
             raise KeyError("id")
         id = int(dict["id"])
@@ -64,7 +64,7 @@ class KeyStore:
             raise KeyError("key")
         try:
             key = binascii.a2b_hex(dict["key"])
-        except:
+        except binascii.Error:
             raise ValueError("key")
 
         keyObj = Key(id, type, role, name, key)
@@ -74,7 +74,7 @@ class KeyStore:
 
     def clear(self, save: bool = False) -> None:
         self._keys.clear()
-        self._logger.info(f"Keystore cleared.")
+        self._logger.info("Keystore cleared.")
         if save:
             self._save()
 

@@ -3,7 +3,7 @@ from binascii import b2a_hex as b2a
 from colorsys import hsv_to_rgb, rgb_to_hsv
 from dataclasses import dataclass
 from enum import Enum, unique
-from typing import Final, List, Optional, Tuple
+from typing import Final, Optional
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class UnitType:
     manufacturer: str
     mode: str
     stateLength: int
-    controls: List[UnitControl]
+    controls: list[UnitControl]
 
     def get_control(self, controlType: UnitControlType) -> Optional[UnitControl]:
         """Return the control description if the unit type supports the given type of control.
@@ -83,7 +83,7 @@ class UnitState:
 
     def __init__(self) -> None:
         self._dimmer: Optional[int] = None
-        self._rgb: Optional[Tuple[int, int, int]] = None
+        self._rgb: Optional[tuple[int, int, int]] = None
         self._white: Optional[int] = None
         self._temperature: Optional[int] = None
         self._vertical: Optional[int] = None
@@ -131,11 +131,11 @@ class UnitState:
     RGB_MAX: Final = 2**RGB_RESOLUTION - 1
 
     @property
-    def rgb(self) -> Optional[Tuple[int, int, int]]:
+    def rgb(self) -> Optional[tuple[int, int, int]]:
         return self._rgb
 
     @rgb.setter
-    def rgb(self, value: Tuple[int, int, int]) -> None:
+    def rgb(self, value: tuple[int, int, int]) -> None:
         r, g, b = value
         self._check_range(r, self.RGB_MIN, self.RGB_MAX)
         self._check_range(g, self.RGB_MIN, self.RGB_MAX)
@@ -148,8 +148,8 @@ class UnitState:
         self._rgb = None
 
     @property
-    def hs(self) -> Optional[Tuple[float, float]]:
-        """Convert RGB into HS where H is a float in [0..1[ and S a float in [0..1]"""
+    def hs(self) -> Optional[tuple[float, float]]:
+        """Convert RGB into HS where H is a float in [0..1[ and S a float in [0..1]."""
         if self._rgb is None:
             return None
 
@@ -163,8 +163,8 @@ class UnitState:
         return (h, s)
 
     @hs.setter
-    def hs(self, value: Tuple[float, float]) -> None:
-        """Convert HS color to interal RBG representation where H is a float in [0..1[ and S a float in [0..1]"""
+    def hs(self, value: tuple[float, float]) -> None:
+        """Convert HS color to interal RBG representation where H is a float in [0..1[ and S a float in [0..1]."""
         h, s = value
 
         rgb = hsv_to_rgb(h, s, 1)
@@ -257,7 +257,7 @@ class Unit:
         """
 
         # offset, lenth, value
-        values: List[Tuple[int, int, int]] = []
+        values: list[tuple[int, int, int]] = []
 
         # TODO: Support for resolutions >8 byte?
         # Parse and convert state
@@ -378,7 +378,7 @@ class Unit:
                 self._state.white = cInt << scale
             elif c.type == UnitControlType.TEMPERATURE:
                 if not c.max or not c.min:
-                    _LOGGER.warning(f"Can't set temperature when min or max unknown.")
+                    _LOGGER.warning("Can't set temperature when min or max unknown.")
                     continue
                 tempRange = c.max - c.min
                 tempMask = 2**c.length - 1
@@ -417,4 +417,4 @@ class Group:
     groudId: int
     name: str
 
-    units: List[Unit]
+    units: list[Unit]
