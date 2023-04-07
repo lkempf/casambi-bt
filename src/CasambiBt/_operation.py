@@ -24,7 +24,11 @@ class OperationsContext:
 
         flags = (self.lifetime & 15) << 11 | len(payload)
 
-        packet = struct.pack(">hbhhh", flags, op, self.origin, target, 0)
+        # Ensure that origin can't overflow.
+        # TODO: Check that signed is actually correct here.
+        packet = struct.pack(
+            ">hbhhh", flags, op, self.origin & (2**15 - 1), target, 0
+        )
         self.origin += 1
 
         return packet + payload
