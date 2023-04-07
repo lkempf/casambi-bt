@@ -1,7 +1,7 @@
 name: Lint
 on: [ push, pull_request ]
 jobs:
-  ruff:
+  lint:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -13,9 +13,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
-        uses: VaultVulp/action-pipenv@v2.0.1
-        with:
-          command: update --dev
+        run: |
+          pip install pipenv
+          pipenv install -d
       - uses: isort/isort-action@master
       - uses: psf/black@stable
       - uses: chartboost/ruff-action@v1
