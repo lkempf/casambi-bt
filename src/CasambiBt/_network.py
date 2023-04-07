@@ -1,3 +1,4 @@
+import json
 import logging
 import pickle
 from dataclasses import dataclass
@@ -5,13 +6,18 @@ from datetime import datetime
 from typing import Optional, cast
 
 import httpx
-from httpx import AsyncClient
+from httpx import AsyncClient, NetworkError
 
 from ._cache import getCacheDir
 from ._constants import DEVICE_NAME
 from ._keystore import KeyStore
 from ._unit import Group, Scene, Unit, UnitControl, UnitControlType, UnitType
-from .errors import AuthenticationError, NetworkNotFoundError, NetworkUpdateError
+from .errors import (
+    AuthenticationError,
+    NetworkNotFoundError,
+    NetworkOnlineUpdateNeededError,
+    NetworkUpdateError,
+)
 
 
 @dataclass()
@@ -41,7 +47,9 @@ class Network:
 
     def __init__(self, uuid: str, httpClient: AsyncClient) -> None:
         self._logger = logging.getLogger(__name__)
+        # TODO: Create LoggingAdapter to prepend uuid.
 
+        self._id: Optional[str] = None
         self._uuid = uuid
         self._httpClient = httpClient
 
@@ -72,14 +80,32 @@ class Network:
         self._logger.info("Saving type cache...")
         pickle.dump(self._unitTypes, self._typeCachePath.open("wb"))
 
-    async def getNetworkId(self) -> None:
-        _logger = logging.getLogger(__name__)
-        _logger.info(f"Getting network id...")
+    async def getNetworkId(self, forceOffline: bool = False) -> None:
+        self._logger.info(f"Getting network id...")
 
-        # TODO: Use cache
+        networkCacheFile = self._cachePath / f"networkid"
+
+        if networkCacheFile.exists():
+            self._id = networkCacheFile.read_text()
+
+        if forceOffline:
+            if not self._id:
+                raise NetworkOnlineUpdateNeededError("Network isn't cached.")
+            else:
+                return
 
         getNetworkIdUrl = f"https://api.casambi.com/network/uuid/{self._uuid}"
-        res = await self._httpClient.get(getNetworkIdUrl)
+        try:
+            res = await self._httpClient.get(getNetworkIdUrl)
+        except NetworkError as err:
+            if not self._id:
+                raise NetworkOnlineUpdateNeededError from err
+            else:
+                self._logger.warning(
+                    "Network error while fetching network id. Continuing with cache.",
+                    exc_info=True,
+                )
+                return
 
         if res.status_code == httpx.codes.NOT_FOUND:
             raise NetworkNotFoundError(
@@ -90,8 +116,12 @@ class Network:
                 f"Getting network id returned unexpected status {res.status_code}"
             )
 
-        self._id = cast(str, res.json()["id"])
-        _logger.info(f"Got network id {self._id}.")
+        new_id = cast(str, res.json()["id"])
+        if self._id != new_id:
+            self._logger.info(f"Network id changed from {self._id} to {new_id}.")
+            networkCacheFile.write_text(new_id)
+            self._id = new_id
+        self._logger.info(f"Got network id {self._id}.")
 
     def authenticated(self) -> bool:
         if not self._session:
@@ -101,10 +131,11 @@ class Network:
     def getKeyStore(self) -> KeyStore:
         return self._keystore
 
-    async def logIn(self, password: str) -> None:
-        await self.getNetworkId()
+    async def logIn(self, password: str, forceOffline: bool = False) -> None:
+        await self.getNetworkId(forceOffline)
 
-        if self.authenticated():
+        # No need to be authenticated if we try to be offline anyway.
+        if self.authenticated() or forceOffline:
             return
 
         self._logger.info(f"Logging in to network...")
@@ -125,43 +156,70 @@ class Network:
         else:
             raise AuthenticationError(f"Login failed: {res.status_code}\n{res.text}")
 
-    async def update(self) -> None:
+    async def update(self, forceOffline: bool = False) -> None:
         self._logger.info(f"Updating network...")
-        if not self.authenticated():
+        if not self.authenticated() and not forceOffline:
             raise AuthenticationError("Not authenticated!")
+
+        assert self._id != None, "Network id must be set."
 
         # TODO: Save and send revision to receive actual updates?
 
-        getNetworkUrl = f"https://api.casambi.com/network/{self._id}/"
+        cachedNetworkPah = self._cachePath / f"{self._id}.json"
+        if cachedNetworkPah.exists():
+            network = json.loads(cachedNetworkPah.read_bytes())
+            self._networkRevision = network["network"]["revision"]
+            self._logger.info(
+                f"Loaded cached network. Revision: {self._networkRevision}"
+            )
+        else:
+            if forceOffline:
+                raise NetworkOnlineUpdateNeededError("Network isn't cached.")
+            self._networkRevision = 0
 
-        # **SECURITY**: Do not set session header for client! This could leak the session with external clients.
-        res = await self._httpClient.put(
-            getNetworkUrl,
-            json={"formatVersion": 1, "deviceName": DEVICE_NAME},
-            headers={"X-Casambi-Session": self._session.session},  # type: ignore[union-attr]
-        )
+        if not forceOffline:
+            getNetworkUrl = f"https://api.casambi.com/network/{self._id}/"
 
-        if res.status_code != httpx.codes.OK:
-            self._logger.error(f"Update failed: {res.status_code}\n{res.text}")
-            raise NetworkUpdateError("Could not update network!")
+            # **SECURITY**: Do not set session header for client! This could leak the session with external clients.
+            res = await self._httpClient.put(
+                getNetworkUrl,
+                json={
+                    "formatVersion": 1,
+                    "deviceName": DEVICE_NAME,
+                    "revision": self._networkRevision,
+                },
+                headers={"X-Casambi-Session": self._session.session},  # type: ignore[union-attr]
+            )
 
-        self._logger.debug(f"Network: {res.text}")
+            if res.status_code != httpx.codes.OK:
+                self._logger.error(f"Update failed: {res.status_code}\n{res.text}")
+                raise NetworkUpdateError("Could not update network!")
 
-        resJson = res.json()
+            self._logger.debug(f"Network: {res.text}")
+
+            updateResult = res.json()
+            if updateResult["status"] != "UPTODATE":
+                self._networkRevision = updateResult["network"]["revision"]
+                cachedNetworkPah.write_bytes(res.content)
+                network = updateResult
+                self._logger.info(
+                    f"Fetched updated network with revision {self._networkRevision}"
+                )
 
         # Prase general information
-        self._networkName = resJson["network"]["name"]
-        self._networkRevision = resJson["network"]["revision"]
+        self._networkName = network["network"]["name"]
 
-        # Parse keys if there are any. Otherwise the network is probably set up for keyless auth.
-        if "keyStore" in resJson["network"]:
-            keys = resJson["network"]["keyStore"]["keys"]
+        # Parse keys if there are any. Otherwise the network is probably a classic network.
+        if "keyStore" in network["network"]:
+            keys = network["network"]["keyStore"]["keys"]
             for k in keys:
                 self._keystore.addKey(k)
 
+        # TODO: Parse managerKey and visitorKey for classic networks.
+
         # Parse units
         self.units = []
-        units = resJson["network"]["units"]
+        units = network["network"]["units"]
         for u in units:
             uType = await self._fetchUnitInfo(u["type"])
             uObj = Unit(
@@ -177,7 +235,7 @@ class Network:
 
         # Parse cells
         self.groups = []
-        cells = resJson["network"]["grid"]["cells"]
+        cells = network["network"]["grid"]["cells"]
         for c in cells:
             # Only one type at top level is currently supported
             if c["type"] != 2:
@@ -206,7 +264,7 @@ class Network:
 
         # Parse scenes
         self.scenes = []
-        scenes = resJson["network"]["scenes"]
+        scenes = network["network"]["scenes"]
         for s in scenes:
             sObj = Scene(s["sceneID"], s["name"])
             self.scenes.append(sObj)

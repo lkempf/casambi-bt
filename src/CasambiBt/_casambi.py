@@ -4,7 +4,7 @@ from itertools import pairwise
 from typing import Any, Callable, Optional, Union
 
 from bleak.backends.device import BLEDevice
-from httpx import AsyncClient
+from httpx import AsyncClient, NetworkError
 
 from ._client import CasambiClient, ConnectionState, IncommingPacketType
 from ._network import Network
@@ -91,7 +91,10 @@ class Casambi:
         return self._casaClient._connectionState == ConnectionState.AUTHENTICATED
 
     async def connect(
-        self, addr_or_device: Union[str, BLEDevice], password: str
+        self,
+        addr_or_device: Union[str, BLEDevice],
+        password: str,
+        forceOffline: bool = False,
     ) -> None:
         """Connect and authenticate to a network.
 
@@ -120,8 +123,16 @@ class Casambi:
         # Retrieve network information
         uuid = addr.replace(":", "").lower()
         self._casaNetwork = Network(uuid, self._httpClient)
-        await self._casaNetwork.logIn(password)
-        await self._casaNetwork.update()
+        try:
+            await self._casaNetwork.logIn(password, forceOffline)
+        except NetworkError:
+            self._logger.warning(
+                "Network error while logging in. Trying to continue offline.",
+                exc_info=True,
+            )
+            forceOffline = True
+
+        await self._casaNetwork.update(forceOffline)
         await self._connectClient()
 
     async def _connectClient(self) -> None:

@@ -15,6 +15,10 @@ class NetworkUpdateError(CasambiBtError):
     pass
 
 
+class NetworkOnlineUpdateNeededError(NetworkUpdateError):
+    pass
+
+
 class ConnectionStateError(CasambiBtError):
     def __init__(
         self,
