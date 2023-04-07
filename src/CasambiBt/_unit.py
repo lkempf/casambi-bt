@@ -238,7 +238,7 @@ class Unit:
     def is_on(self) -> bool:
         """Determine whether the unit is turned on."""
         if self.unitType.get_control(UnitControlType.DIMMER) and self._state:
-            return self._on and self._state.dimmer > 0
+            return self._on and self._state.dimmer != None and self._state.dimmer > 0  # type: ignore[operator]
         else:
             return self._on
 
