@@ -383,6 +383,3 @@ class Casambi:
             self._casaNetwork = None
         if self._ownHttpClient:
             await self._httpClient.aclose()
-
-    async def __aexit__(self) -> None:
-        await self.disconnect()

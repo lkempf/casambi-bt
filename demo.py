@@ -23,22 +23,24 @@ async def main():
 
     # Connect to the selected network
     casa = Casambi()
-    await casa.connect(device, pwd)
+    try:
+        await casa.connect(device, pwd)
 
-    # Turn all lights on
-    await casa.turnOn(None)
-    await asyncio.sleep(5)
+        # Turn all lights on
+        await casa.turnOn(None)
+        await asyncio.sleep(5)
 
-    # Turn all lights off
-    await casa.setLevel(None, 0)
-    await asyncio.sleep(1)
+        # Turn all lights off
+        await casa.setLevel(None, 0)
+        await asyncio.sleep(1)
 
-    # Print the state of all units
-    for u in casa.units:
-        print(u.__repr__())
+        # Print the state of all units
+        for u in casa.units:
+            print(u.__repr__())
+    finally:
+        await casa.disconnect()
 
 
 if __name__ == "__main__":
     loop = asyncio.new_event_loop()
-    loop.create_task(main())
-    loop.run_forever()
+    loop.run_until_complete(main())
