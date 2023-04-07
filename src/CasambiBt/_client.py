@@ -133,7 +133,7 @@ class CasambiClient:
     def _on_disconnect(self, client: BleakClient) -> None:
         if self._connectionState != ConnectionState.NONE:
             self._logger.info(f"Received disconnect callback from {self.address}")
-        if self._connectionState == ConnectionState.CONNECTED:
+        if self._connectionState == ConnectionState.AUTHENTICATED:
             self._disconnectedCallback()
         self._connectionState = ConnectionState.NONE
 
