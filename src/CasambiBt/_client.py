@@ -10,7 +10,12 @@ from bleak import BleakClient
 from bleak.backends.characteristic import BleakGATTCharacteristic
 from bleak.backends.client import BLEDevice
 from bleak.exc import BleakError
-from bleak_retry_connector import BleakNotFoundError, establish_connection, get_device
+from bleak_retry_connector import (
+    BleakNotFoundError,
+    close_stale_connections,
+    establish_connection,
+    get_device,
+)
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric import ec
 
@@ -107,6 +112,8 @@ class CasambiClient:
             raise NetworkNotFoundError
 
         try:
+            # If we are already connected to the device the key exchange will fail.
+            await close_stale_connections(device)
             # TODO: Should we try to get access to the network name here?
             self._gattClient = await establish_connection(
                 BleakClient, device, "Casambi Network", self._on_disconnect
