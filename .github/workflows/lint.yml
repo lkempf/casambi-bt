@@ -16,7 +16,11 @@ jobs:
         run: |
           pip install pipenv
           pipenv install -d
-      - uses: isort/isort-action@master
-      - uses: psf/black@stable
-      - uses: chartboost/ruff-action@v1
-      - uses: jpetrucciani/mypy-check@master
+      - name: isort
+        run: pipenv run isort --check-only --diff .
+      - name: black
+        run: pipenv run black --check --diff .
+      - name: ruff
+        run: pipenv run ruff check .
+      - name: mypy
+        run: pipenv run mypy .
