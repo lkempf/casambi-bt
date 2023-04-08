@@ -25,9 +25,9 @@ class OperationsContext:
         flags = (self.lifetime & 15) << 11 | len(payload)
 
         # Ensure that origin can't overflow.
-        # TODO: Check that signed is actually correct here.
+        # TODO: Check that unsigned is actually correct here.
         packet = struct.pack(
-            ">hbhhh", flags, op, self.origin & (2**15 - 1), target, 0
+            ">HBHHH", flags, op, self.origin & (2**16 - 1), target, 0
         )
         self.origin += 1
 
