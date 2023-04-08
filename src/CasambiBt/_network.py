@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Optional, cast
 
 import httpx
-from httpx import AsyncClient, NetworkError
+from httpx import AsyncClient, RequestError
 
 from ._cache import getCacheDir
 from ._constants import DEVICE_NAME
@@ -97,7 +97,7 @@ class Network:
         getNetworkIdUrl = f"https://api.casambi.com/network/uuid/{self._uuid}"
         try:
             res = await self._httpClient.get(getNetworkIdUrl)
-        except NetworkError as err:
+        except RequestError as err:
             if not self._id:
                 raise NetworkOnlineUpdateNeededError from err
             else:

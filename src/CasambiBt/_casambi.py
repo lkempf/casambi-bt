@@ -4,7 +4,7 @@ from itertools import pairwise  # type: ignore[attr-defined]
 from typing import Any, Callable, Optional, Union, cast
 
 from bleak.backends.device import BLEDevice
-from httpx import AsyncClient, NetworkError
+from httpx import AsyncClient, RequestError
 
 from ._client import CasambiClient, ConnectionState, IncommingPacketType
 from ._network import Network
@@ -127,7 +127,8 @@ class Casambi:
         self._casaNetwork = Network(uuid, self._httpClient)
         try:
             await self._casaNetwork.logIn(password, forceOffline)
-        except NetworkError:
+        # TODO: I don't like that this logic is in this class but I couldn't think of a better way.
+        except RequestError:
             self._logger.warning(
                 "Network error while logging in. Trying to continue offline.",
                 exc_info=True,
