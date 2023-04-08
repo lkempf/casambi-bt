@@ -180,30 +180,37 @@ class Network:
         if not forceOffline:
             getNetworkUrl = f"https://api.casambi.com/network/{self._id}/"
 
-            # **SECURITY**: Do not set session header for client! This could leak the session with external clients.
-            res = await self._httpClient.put(
-                getNetworkUrl,
-                json={
-                    "formatVersion": 1,
-                    "deviceName": DEVICE_NAME,
-                    "revision": self._networkRevision,
-                },
-                headers={"X-Casambi-Session": self._session.session},  # type: ignore[union-attr]
-            )
+            try:
+                # **SECURITY**: Do not set session header for client! This could leak the session with external clients.
+                res = await self._httpClient.put(
+                    getNetworkUrl,
+                    json={
+                        "formatVersion": 1,
+                        "deviceName": DEVICE_NAME,
+                        "revision": self._networkRevision,
+                    },
+                    headers={"X-Casambi-Session": self._session.session},  # type: ignore[union-attr]
+                )
 
-            if res.status_code != httpx.codes.OK:
-                self._logger.error(f"Update failed: {res.status_code}\n{res.text}")
-                raise NetworkUpdateError("Could not update network!")
+                if res.status_code != httpx.codes.OK:
+                    self._logger.error(f"Update failed: {res.status_code}\n{res.text}")
+                    raise NetworkUpdateError("Could not update network!")
 
-            self._logger.debug(f"Network: {res.text}")
+                self._logger.debug(f"Network: {res.text}")
 
-            updateResult = res.json()
-            if updateResult["status"] != "UPTODATE":
-                self._networkRevision = updateResult["network"]["revision"]
-                cachedNetworkPah.write_bytes(res.content)
-                network = updateResult
-                self._logger.info(
-                    f"Fetched updated network with revision {self._networkRevision}"
+                updateResult = res.json()
+                if updateResult["status"] != "UPTODATE":
+                    self._networkRevision = updateResult["network"]["revision"]
+                    cachedNetworkPah.write_bytes(res.content)
+                    network = updateResult
+                    self._logger.info(
+                        f"Fetched updated network with revision {self._networkRevision}"
+                    )
+            except RequestError as err:
+                if self._networkRevision == 0:
+                    raise NetworkUpdateError from err
+                self._logger.warning(
+                    "Failed to update network. Continuing offline.", exc_info=True
                 )
 
         # Prase general information
