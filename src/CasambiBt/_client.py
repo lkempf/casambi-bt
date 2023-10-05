@@ -200,7 +200,7 @@ class CasambiClient:
         await self._activityLock.acquire()
         try:
             self._notifySignal.clear()
-            if self._connectionState == ConnectionState.ERROR:
+            if self._connectionState == ConnectionState.ERROR:  # type: ignore[comparison-overlap]
                 raise ProtocolError("Failed to negotiate key!")
             else:
                 self._logger.info("Key exchange sucessful")

@@ -15,7 +15,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install pipenv
-          pipenv install -d
+          pipenv sync -d
       - name: isort
         run: pipenv run isort --check-only --diff .
       - name: black
