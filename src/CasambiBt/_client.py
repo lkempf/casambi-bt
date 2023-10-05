@@ -471,7 +471,7 @@ class CasambiClient:
         if self._gattClient.is_connected:
             try:
                 await self._gattClient.disconnect()
-            except:
+            except Exception:
                 self._logger.error("Failed to disconnect BleakClient.", exc_info=True)
 
         self._connectionState = ConnectionState.NONE

@@ -380,16 +380,16 @@ class Casambi:
         if self._casaClient:
             try:
                 await asyncio.shield(self._casaClient.disconnect())
-            except:
+            except Exception:
                 self._logger.error("Failed to disconnect from client.", exc_info=True)
         if self._casaNetwork:
             try:
                 await asyncio.shield(self._casaNetwork.disconnect())
-            except:
+            except Exception:
                 self._logger.error("Failed to disconnect from network.", exc_info=True)
             self._casaNetwork = None
         if self._ownHttpClient and self._httpClient is not None:
             try:
                 await asyncio.shield(self._httpClient.aclose())
-            except:
+            except Exception:
                 self._logger.error("Failed to close http client.", exc_info=True)
