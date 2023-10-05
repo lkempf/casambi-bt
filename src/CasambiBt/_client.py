@@ -79,7 +79,7 @@ class CasambiClient:
             else address_or_device
         )
         self._logger = logging.getLogger(__name__)
-        self._connectionState = ConnectionState.NONE
+        self._connectionState: ConnectionState = ConnectionState.NONE
         self._dataCallback = dataCallback
         self._disconnectedCallback = disonnectedCallback
         self._activityLock = asyncio.Lock()
