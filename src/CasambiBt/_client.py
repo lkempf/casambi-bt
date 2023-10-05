@@ -126,6 +126,9 @@ class CasambiClient:
         except BleakError as e:
             self._logger.error("Failed to connect.", exc_info=True)
             raise BluetoothError(e.args) from e
+        except Exception as e:
+            self._logger.error("Unkown connection failure.", exc_info=True)
+            raise BluetoothError from e
 
         self._logger.info(f"Connected to {self.address}")
         self._connectionState = ConnectionState.CONNECTED
@@ -466,7 +469,10 @@ class CasambiClient:
             self._callbackTask = None
 
         if self._gattClient.is_connected:
-            await self._gattClient.disconnect()
+            try:
+                await self._gattClient.disconnect()
+            except:
+                self._logger.error("Failed to disconnect BleakClient.", exc_info=True)
 
         self._connectionState = ConnectionState.NONE
         self._logger.info("Disconnected.")

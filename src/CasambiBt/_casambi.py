@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from binascii import b2a_hex as b2a
 from itertools import pairwise  # type: ignore[attr-defined]
@@ -28,11 +29,7 @@ class Casambi:
 
         self._logger = logging.getLogger(__name__)
         self._opContext = OperationsContext()
-        if not httpClient:
-            httpClient = AsyncClient()
-            self._ownHttpClient = True
-        else:
-            self._ownHttpClient = False
+        self._ownHttpClient = httpClient is None
         self._httpClient = httpClient
 
     def _checkNetwork(self) -> None:
@@ -121,6 +118,9 @@ class Casambi:
         self._casaClient = CasambiClient(
             addr_or_device, self._dataCallback, self._disconnect_callback
         )
+
+        if not self._httpClient:
+            self._httpClient = AsyncClient()
 
         # Retrieve network information
         uuid = addr.replace(":", "").lower()
@@ -378,9 +378,18 @@ class Casambi:
     async def disconnect(self) -> None:
         """Disconnect from the network."""
         if self._casaClient:
-            await self._casaClient.disconnect()
+            try:
+                await asyncio.shield(self._casaClient.disconnect())
+            except:
+                self._logger.error("Failed to disconnect from client.", exc_info=True)
         if self._casaNetwork:
-            await self._casaNetwork.disconnect()
+            try:
+                await asyncio.shield(self._casaNetwork.disconnect())
+            except:
+                self._logger.error("Failed to disconnect from network.", exc_info=True)
             self._casaNetwork = None
-        if self._ownHttpClient:
-            await self._httpClient.aclose()
+        if self._ownHttpClient and self._httpClient is not None:
+            try:
+                await asyncio.shield(self._httpClient.aclose())
+            except:
+                self._logger.error("Failed to close http client.", exc_info=True)
