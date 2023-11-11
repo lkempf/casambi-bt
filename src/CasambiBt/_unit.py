@@ -300,7 +300,7 @@ class Unit:
                 and c.min
                 and c.max
             ):
-                clampedTemp = max(c.max, min(c.min, state.temperature))
+                clampedTemp = min(c.max, max(c.min, state.temperature))
                 tempMask = 2**c.length - 1
                 scaledValue = (tempMask * (clampedTemp - c.min)) // (c.max - c.min)
 
