@@ -363,12 +363,13 @@ class Casambi:
         self._unitChangedCallbacks.remove(handler)
         self._logger.info(f"Removed unit changed handler {handler}")
 
-    def invalidateCache(self, uuid: str) -> None:
+    def invalidateCache(self, address: str) -> None:
         """Invalidates the cache for a network.
 
-        :param uuid: The uuid of the network.
+        :param uuid: The address of the network.
         """
-        invalidateCache(uuid)
+        address = address.replace(":", "").lower()
+        invalidateCache(address)
 
     def _disconnect_callback(self) -> None:
         # Mark all units as offline on disconnect.
