@@ -197,7 +197,7 @@ class Network:
                 # Currently we invalidate the whole cache for the network since recreating it doesn't cost much.
                 if res.status_code == httpx.codes.GONE:
                     self._logger.error(
-                        f"API reports that network is gone. Deleting cache. Retry later."
+                        "API reports that network is gone. Deleting cache. Retry later."
                     )
                     invalidateCache(self._uuid)
 
