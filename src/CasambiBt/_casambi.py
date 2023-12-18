@@ -7,6 +7,7 @@ from typing import Any, Callable, Optional, Union, cast
 from bleak.backends.device import BLEDevice
 from httpx import AsyncClient, RequestError
 
+from ._cache import invalidateCache
 from ._client import CasambiClient, ConnectionState, IncommingPacketType
 from ._network import Network
 from ._operation import OpCode, OperationsContext
@@ -361,6 +362,13 @@ class Casambi:
         """
         self._unitChangedCallbacks.remove(handler)
         self._logger.info(f"Removed unit changed handler {handler}")
+
+    def invalidateCache(self, uuid: str) -> None:
+        """Invalidates the cache for a network.
+
+        :param uuid: The uuid of the network.
+        """
+        invalidateCache(uuid)
 
     def _disconnect_callback(self) -> None:
         # Mark all units as offline on disconnect.

@@ -8,7 +8,7 @@ from typing import Optional, cast
 import httpx
 from httpx import AsyncClient, RequestError
 
-from ._cache import getCacheDir
+from ._cache import getCacheDir, invalidateCache
 from ._constants import DEVICE_NAME
 from ._keystore import KeyStore
 from ._unit import Group, Scene, Unit, UnitControl, UnitControlType, UnitType
@@ -191,6 +191,15 @@ class Network:
                     },
                     headers={"X-Casambi-Session": self._session.session},  # type: ignore[union-attr]
                 )
+
+                # Apparently this happens when the password changes.
+                # In this case we should at least invalidate the session.
+                # Currently we invalidate the whole cache for the network since recreating it doesn't cost much.
+                if res.status_code == httpx.codes.GONE:
+                    self._logger.error(
+                        f"API reports that network is gone. Deleting cache. Retry later."
+                    )
+                    invalidateCache(self._uuid)
 
                 if res.status_code != httpx.codes.OK:
                     self._logger.error(f"Update failed: {res.status_code}\n{res.text}")

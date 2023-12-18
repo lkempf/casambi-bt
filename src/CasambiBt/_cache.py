@@ -30,3 +30,11 @@ def getCacheDir(id: str) -> Path:
         cacheDir.mkdir()
 
     return cacheDir
+
+
+def invalidateCache(id: str | None) -> None:
+    if id is None:
+        shutil.rmtree(CACHE_PATH)
+    else:
+        shutil.rmtree(getCacheDir(id))
+    _ensureCacheValid()
