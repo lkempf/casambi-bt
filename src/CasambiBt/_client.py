@@ -220,6 +220,10 @@ class CasambiClient:
     async def _processCallbacks(self) -> None:
         while True:
             handle, data = await self._callbackQueue.get()
+
+            # Try to loose any races here.
+            # Otherwise a state change caused by the last packet might not have been handled yet
+            await asyncio.sleep(0.001)
             await self._activityLock.acquire()
             try:
                 self._callbackMulitplexer(handle, data)
