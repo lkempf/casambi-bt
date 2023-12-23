@@ -1,4 +1,5 @@
 ![PyPI](https://img.shields.io/pypi/v/casambi-bt)
+[![Discord](https://img.shields.io/discord/1186445089317326888)](https://discord.gg/jgZVugfx)
 
 # A bluetooth based Python library for controlling Casambi networks
 
