@@ -55,7 +55,7 @@ class CasambiClient:
         dataCallback: Callable[[IncommingPacketType, dict[str, Any]], None],
         disonnectedCallback: Callable[[], None],
     ) -> None:
-        self._gattClient: BleakClient
+        self._gattClient: BleakClient = None  # type: ignore[assignment]
         self._notifySignal = asyncio.Event()
 
         self._mtu: int
