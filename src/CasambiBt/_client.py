@@ -137,6 +137,7 @@ class CasambiClient:
         if self._connectionState != ConnectionState.NONE:
             self._logger.info(f"Received disconnect callback from {self.address}")
         if self._connectionState == ConnectionState.AUTHENTICATED:
+            self._logger.debug("Executing disconnect callback.")
             self._disconnectedCallback()
         self._connectionState = ConnectionState.NONE
 
