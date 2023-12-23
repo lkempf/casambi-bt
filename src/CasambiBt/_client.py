@@ -468,11 +468,11 @@ class CasambiClient:
     async def disconnect(self) -> None:
         self._logger.info("Disconnecting...")
 
-        if self._callbackTask:
+        if self._callbackTask is not None:
             self._callbackTask.cancel()
             self._callbackTask = None
 
-        if self._gattClient.is_connected:
+        if self._gattClient is not None and self._gattClient.is_connected:
             try:
                 await self._gattClient.disconnect()
             except Exception:
