@@ -43,12 +43,12 @@ class Cache:
             if cacheVer is None:
                 cacheVer = 0
             if cacheVer < CACHE_VERSION:
-                _LOGGER.info(
-                    "Cache is version %i, version %i is required.",
+                _LOGGER.warn(
+                    "Cache is version %i, version %i is required. Recreating cache.",
                     cacheVer,
                     CACHE_VERSION,
                 )
-                self.invalidateCache(True)
+                shutil.rmtree(self._cachePath)
 
         # This is not a redunant condition. We may have deleted the cache.
         if not self._cachePath.exists():
@@ -84,17 +84,12 @@ class Cache:
     ) -> None:
         _cacheLock.release()
 
-    def invalidateCache(self, all: bool = False) -> None:
+    def invalidateCache(self) -> None:
         with _cacheLock:
-            if all:
-                _LOGGER.warning("Deleting all cache entries!")
-                shutil.rmtree(self._cachePath)
-                self._ensureCacheValid()
-            else:
-                if self._uuid is None:
-                    raise ValueError("UUID not set.")
-                self._ensureCacheValid()
-                if not (self._cachePath / self._uuid).exists():
-                    return
-                _LOGGER.info("Deleting cache entry %s", self._uuid)
-                shutil.rmtree(self._cachePath / self._uuid)
+            if self._uuid is None:
+                raise ValueError("UUID not set.")
+            self._ensureCacheValid()
+            if not (self._cachePath / self._uuid).exists():
+                return
+            _LOGGER.info("Deleting cache entry %s", self._uuid)
+            shutil.rmtree(self._cachePath / self._uuid)

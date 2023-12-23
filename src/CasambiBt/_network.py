@@ -209,7 +209,7 @@ class Network:
                     self._logger.error(
                         "API reports that network is gone. Deleting cache. Retry later."
                     )
-                    self._cache.invalidateCache(False)
+                    self._cache.invalidateCache()
 
                 if res.status_code != httpx.codes.OK:
                     self._logger.error(f"Update failed: {res.status_code}\n{res.text}")

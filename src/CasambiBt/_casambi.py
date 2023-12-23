@@ -379,7 +379,7 @@ class Casambi:
         # before the first connection attempt.
         tempCache = Cache(self._cache._cachePath)
         tempCache.setUuid(uuid)
-        tempCache.invalidateCache(False)
+        tempCache.invalidateCache()
 
     def _disconnect_callback(self) -> None:
         # Mark all units as offline on disconnect.
