@@ -2,8 +2,9 @@ import binascii
 import logging
 import pickle
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Optional
+from typing import Final, Optional
+
+from ._cache import Cache
 
 
 @dataclass()
@@ -15,23 +16,31 @@ class Key:
     key: bytes
 
 
+KEY_CACHE_FILE: Final = "keys.pck"
+
+
 class KeyStore:
-    def __init__(self, cacheDir: Path) -> None:
+    def __init__(self, cache: Cache) -> None:
         self._keys: list[Key] = []
         self._logger = logging.getLogger(__name__)
 
-        self._storePath = cacheDir / "keys.pck"
-        if self._storePath.exists():
-            self._load()
+        self._cache = cache
+        self._load()
 
     def _load(self) -> None:
         self._logger.info("Loading keys...")
-        self._keys = pickle.load(self._storePath.open("rb"))
-        self._logger.info(f"Loaded {len(self._keys)} keys.")
+        with self._cache as cachePath:
+            if not (cachePath / KEY_CACHE_FILE).exists():
+                self._logger.debug("No cached keys.")
+                return
+            self._keys = pickle.load((cachePath / KEY_CACHE_FILE).open("rb"))
+            self._logger.debug(f"Loaded {len(self._keys)} keys.")
 
     def _save(self) -> None:
         self._logger.info("Saving keys...")
-        pickle.dump(self._keys, (self._storePath.open("wb")))
+        with self._cache as cachePath:
+            pickle.dump(self._keys, ((cachePath / KEY_CACHE_FILE).open("wb")))
+            self._logger.debug(f"Saved {len(self._keys)} keys.")
 
     def addKey(self, dict: dict) -> None:
         if "id" not in dict:

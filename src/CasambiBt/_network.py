@@ -3,12 +3,12 @@ import logging
 import pickle
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, cast
+from typing import Final, Optional, cast
 
 import httpx
 from httpx import AsyncClient, RequestError
 
-from ._cache import getCacheDir, invalidateCache
+from ._cache import Cache
 from ._constants import DEVICE_NAME
 from ._keystore import KeyStore
 from ._unit import Group, Scene, Unit, UnitControl, UnitControlType, UnitType
@@ -18,6 +18,9 @@ from .errors import (
     NetworkOnlineUpdateNeededError,
     NetworkUpdateError,
 )
+
+SESSION_CACHE_FILE: Final = "session.pck"
+TYPES_CACHE_FILE: Final = "types.pck"
 
 
 @dataclass()
@@ -35,7 +38,7 @@ class _NetworkSession:
 
 
 class Network:
-    def __init__(self, uuid: str, httpClient: AsyncClient) -> None:
+    def __init__(self, uuid: str, httpClient: AsyncClient, cache: Cache) -> None:
         self._session: Optional[_NetworkSession] = None
 
         self._networkName: Optional[str] = None
@@ -53,40 +56,44 @@ class Network:
         self._uuid = uuid
         self._httpClient = httpClient
 
-        self._cachePath = getCacheDir(uuid)
-        self._keystore = KeyStore(self._cachePath)
+        self._cache = cache
+        self._keystore = KeyStore(self._cache)
 
-        self._sessionPath = self._cachePath / "session.pck"
-        if self._sessionPath.exists():
-            self._loadSession()
-
-        self._typeCachePath = self._cachePath / "types.pck"
-        if self._typeCachePath.exists():
-            self._loadTypeCache()
+        self._loadSession()
+        self._loadTypeCache()
 
     def _loadSession(self) -> None:
-        self._logger.info("Loading session...")
-        self._session = pickle.load(self._sessionPath.open("rb"))
+        self._logger.debug("Loading session...")
+        with self._cache as cachePath:
+            if (cachePath / SESSION_CACHE_FILE).exists():
+                self._session = pickle.load((cachePath / SESSION_CACHE_FILE).open("rb"))
+                self._logger.info("Session loaded.")
 
     def _saveSesion(self) -> None:
-        self._logger.info("Saving session...")
-        pickle.dump(self._session, self._sessionPath.open("wb"))
+        self._logger.debug("Saving session...")
+        with self._cache as cachePath:
+            pickle.dump(self._session, (cachePath / SESSION_CACHE_FILE).open("wb"))
 
     def _loadTypeCache(self) -> None:
-        self._logger.info("Loading unit type cache...")
-        self._unitTypes = pickle.load(self._typeCachePath.open("rb"))
+        self._logger.debug("Loading unit type cache...")
+        with self._cache as cachePath:
+            if (cachePath / TYPES_CACHE_FILE).exists():
+                self._unitTypes = pickle.load((cachePath / TYPES_CACHE_FILE).open("rb"))
+                self._logger.info("Unit type cache loaded.")
 
     def _saveTypeCache(self) -> None:
-        self._logger.info("Saving type cache...")
-        pickle.dump(self._unitTypes, self._typeCachePath.open("wb"))
+        self._logger.debug("Saving type cache...")
+        with self._cache as cachePath:
+            pickle.dump(self._unitTypes, (cachePath / SESSION_CACHE_FILE).open("wb"))
 
     async def getNetworkId(self, forceOffline: bool = False) -> None:
         self._logger.info("Getting network id...")
 
-        networkCacheFile = self._cachePath / "networkid"
+        with self._cache as cachePath:
+            networkCacheFile = cachePath / "networkid"
 
-        if networkCacheFile.exists():
-            self._id = networkCacheFile.read_text()
+            if networkCacheFile.exists():
+                self._id = networkCacheFile.read_text()
 
         if forceOffline:
             if not self._id:
@@ -119,7 +126,9 @@ class Network:
         new_id = cast(str, res.json()["id"])
         if self._id != new_id:
             self._logger.info(f"Network id changed from {self._id} to {new_id}.")
-            networkCacheFile.write_text(new_id)
+            with self._cache as cachePath:
+                networkCacheFile = cachePath / "networkid"
+                networkCacheFile.write_text(new_id)
             self._id = new_id
         self._logger.info(f"Got network id {self._id}.")
 
@@ -165,17 +174,18 @@ class Network:
 
         # TODO: Save and send revision to receive actual updates?
 
-        cachedNetworkPah = self._cachePath / f"{self._id}.json"
-        if cachedNetworkPah.exists():
-            network = json.loads(cachedNetworkPah.read_bytes())
-            self._networkRevision = network["network"]["revision"]
-            self._logger.info(
-                f"Loaded cached network. Revision: {self._networkRevision}"
-            )
-        else:
-            if forceOffline:
-                raise NetworkOnlineUpdateNeededError("Network isn't cached.")
-            self._networkRevision = 0
+        with self._cache as cachePath:
+            cachedNetworkPah = cachePath / f"{self._id}.json"
+            if cachedNetworkPah.exists():
+                network = json.loads(cachedNetworkPah.read_bytes())
+                self._networkRevision = network["network"]["revision"]
+                self._logger.info(
+                    f"Loaded cached network. Revision: {self._networkRevision}"
+                )
+            else:
+                if forceOffline:
+                    raise NetworkOnlineUpdateNeededError("Network isn't cached.")
+                self._networkRevision = 0
 
         if not forceOffline:
             getNetworkUrl = f"https://api.casambi.com/network/{self._id}/"
@@ -199,7 +209,7 @@ class Network:
                     self._logger.error(
                         "API reports that network is gone. Deleting cache. Retry later."
                     )
-                    invalidateCache(self._uuid)
+                    self._cache.invalidateCache(False)
 
                 if res.status_code != httpx.codes.OK:
                     self._logger.error(f"Update failed: {res.status_code}\n{res.text}")
@@ -210,7 +220,9 @@ class Network:
                 updateResult = res.json()
                 if updateResult["status"] != "UPTODATE":
                     self._networkRevision = updateResult["network"]["revision"]
-                    cachedNetworkPah.write_bytes(res.content)
+                    with self._cache as cachePath:
+                        cachedNetworkPah = cachePath / f"{self._id}.json"
+                        cachedNetworkPah.write_bytes(res.content)
                     network = updateResult
                     self._logger.info(
                         f"Fetched updated network with revision {self._networkRevision}"

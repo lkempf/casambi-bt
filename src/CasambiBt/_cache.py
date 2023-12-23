@@ -1,53 +1,100 @@
 import logging
 import os
 import shutil
-import sys
+import threading
 from pathlib import Path
+from types import TracebackType
 from typing import Final, Optional
 
 _LOGGER = logging.getLogger(__name__)
 
-# HA detection logic: Use .storage folder if running under the assumed storage layout.
-_cachePath = Path(os.getcwd()) / ".storage"
-if not (_cachePath.exists() and _cachePath.is_dir() and "homeassistant" in sys.modules):
-    _cachePath = _cachePath.parent
-_cachePath /= "casambi-bt-store"
-_LOGGER.info("Selecting cache path %s", _cachePath)
-
-CACHE_PATH: Final = _cachePath
+CACHE_PATH_DEFAULT: Final = Path(os.getcwd()) / "casambi-bt-store"
 CACHE_VERSION: Final = 1
-CACHE_VER_FILE: Final = CACHE_PATH / ".cachever"
+
+# We need a global lock since there could be multiple Caambi instances
+# with their own cache instances pointing to the same folder.
+_cacheLock = threading.Lock()
 
 
-def _ensureCacheValid() -> None:
-    if CACHE_PATH.exists():
-        cacheVer = None
-        if CACHE_VER_FILE.exists():
-            cacheVer = int(CACHE_VER_FILE.read_text())
-        if not cacheVer or cacheVer < 1:
-            shutil.rmtree(CACHE_PATH)
+class Cache:
+    def __init__(self, cachePath: Optional[Path]) -> None:
+        self._cachePath = cachePath if cachePath is not None else CACHE_PATH_DEFAULT
+        self._cacheVersionFile = self._cachePath / ".cachever"
+        self._uuid: Optional[str] = None
+        _LOGGER.info("Selecting cache path %s", self._cachePath)
 
-    # This is not a redunant condition. We may have deleted the cache.
-    if not CACHE_PATH.exists():
-        CACHE_PATH.mkdir(mode=0o700)
-        CACHE_VER_FILE.write_text(str(CACHE_VERSION))
+    def setUuid(self, uuid: str) -> None:
+        with _cacheLock:
+            self._uuid = uuid
 
+    def _ensureCacheValid(self) -> None:
+        # We assume that we already have a lock when calling this function
+        assert _cacheLock.locked()
 
-def getCacheDir(id: str) -> Path:
-    _ensureCacheValid()
+        if self._cachePath.exists():
+            cacheVer = None
+            if self._cacheVersionFile.exists():
+                try:
+                    cacheVer = int(self._cacheVersionFile.read_text())
+                    _LOGGER.debug("Read cache version %i.", cacheVer)
+                except ValueError:
+                    cacheVer = -1
+                    _LOGGER.error("Failed to parse cache version.", exc_info=True)
+            if cacheVer is None:
+                cacheVer = 0
+            if cacheVer < CACHE_VERSION:
+                _LOGGER.info(
+                    "Cache is version %i, version %i is required.",
+                    cacheVer,
+                    CACHE_VERSION,
+                )
+                self.invalidateCache(True)
 
-    cacheDir = CACHE_PATH / id
-    if not cacheDir.exists():
-        cacheDir.mkdir()
+        # This is not a redunant condition. We may have deleted the cache.
+        if not self._cachePath.exists():
+            _LOGGER.info("Creating new cache.")
+            self._cachePath.mkdir(mode=0o700)
+            self._cacheVersionFile.write_text(str(CACHE_VERSION))
 
-    return cacheDir
+    def __enter__(self) -> Path:
+        _cacheLock.acquire()
 
+        if self._uuid is None:
+            raise ValueError("UUID not set.")
 
-def invalidateCache(id: Optional[str]) -> None:
-    if id is None:
-        _LOGGER.warning("Invalidating all caches!")
-        shutil.rmtree(CACHE_PATH)
-    else:
-        _LOGGER.info("Invalidating cache %s", id)
-        shutil.rmtree(getCacheDir(id))
-    _ensureCacheValid()
+        try:
+            self._ensureCacheValid()
+
+            cacheDir = self._cachePath / self._uuid
+            if not cacheDir.exists():
+                _LOGGER.debug("Creating cache entry for id %s", self._uuid)
+                cacheDir.mkdir()
+
+            _LOGGER.debug("Returning cache path %s for id %s.", cacheDir, self._uuid)
+            return cacheDir
+        except Exception:
+            _cacheLock.release()
+            raise
+
+    def __exit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
+        _cacheLock.release()
+
+    def invalidateCache(self, all: bool = False) -> None:
+        with _cacheLock:
+            if all:
+                _LOGGER.warning("Deleting all cache entries!")
+                shutil.rmtree(self._cachePath)
+                self._ensureCacheValid()
+            else:
+                if self._uuid is None:
+                    raise ValueError("UUID not set.")
+                self._ensureCacheValid()
+                if not (self._cachePath / self._uuid).exists():
+                    return
+                _LOGGER.info("Deleting cache entry %s", self._uuid)
+                shutil.rmtree(self._cachePath / self._uuid)

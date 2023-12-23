@@ -2,12 +2,13 @@ import asyncio
 import logging
 from binascii import b2a_hex as b2a
 from itertools import pairwise  # type: ignore[attr-defined]
+from pathlib import Path
 from typing import Any, Callable, Optional, Union, cast
 
 from bleak.backends.device import BLEDevice
 from httpx import AsyncClient, RequestError
 
-from ._cache import invalidateCache
+from ._cache import Cache
 from ._client import CasambiClient, ConnectionState, IncommingPacketType
 from ._network import Network
 from ._operation import OpCode, OperationsContext
@@ -22,7 +23,9 @@ class Casambi:
     e.g. ``Network`` or ``CasambiClient``, directly.
     """
 
-    def __init__(self, httpClient: Optional[AsyncClient] = None) -> None:
+    def __init__(
+        self, httpClient: Optional[AsyncClient] = None, cachePath: Optional[Path] = None
+    ) -> None:
         self._casaClient: Optional[CasambiClient] = None
         self._casaNetwork: Optional[Network] = None
 
@@ -32,6 +35,8 @@ class Casambi:
         self._opContext = OperationsContext()
         self._ownHttpClient = httpClient is None
         self._httpClient = httpClient
+
+        self._cache = Cache(cachePath)
 
     def _checkNetwork(self) -> None:
         if not self._casaNetwork or not self._casaNetwork._networkRevision:
@@ -125,7 +130,8 @@ class Casambi:
 
         # Retrieve network information
         uuid = addr.replace(":", "").lower()
-        self._casaNetwork = Network(uuid, self._httpClient)
+        self._cache.setUuid(uuid)
+        self._casaNetwork = Network(uuid, self._httpClient, self._cache)
         try:
             await self._casaNetwork.logIn(password, forceOffline)
         # TODO: I don't like that this logic is in this class but I couldn't think of a better way.
@@ -363,13 +369,17 @@ class Casambi:
         self._unitChangedCallbacks.remove(handler)
         self._logger.info(f"Removed unit changed handler {handler}")
 
-    def invalidateCache(self, address: str) -> None:
+    def invalidateCache(self, uuid: str) -> None:
         """Invalidates the cache for a network.
 
         :param uuid: The address of the network.
         """
-        address = address.replace(":", "").lower()
-        invalidateCache(address)
+
+        # We can't use our own cache here since the invalidation happens
+        # before the first connection attempt.
+        tempCache = Cache(self._cache._cachePath)
+        tempCache.setUuid(uuid)
+        tempCache.invalidateCache(False)
 
     def _disconnect_callback(self) -> None:
         # Mark all units as offline on disconnect.
