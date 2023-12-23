@@ -84,7 +84,7 @@ class Network:
     def _saveTypeCache(self) -> None:
         self._logger.debug("Saving type cache...")
         with self._cache as cachePath:
-            pickle.dump(self._unitTypes, (cachePath / SESSION_CACHE_FILE).open("wb"))
+            pickle.dump(self._unitTypes, (cachePath / TYPES_CACHE_FILE).open("wb"))
 
     async def getNetworkId(self, forceOffline: bool = False) -> None:
         self._logger.info("Getting network id...")
