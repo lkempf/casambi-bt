@@ -30,6 +30,7 @@ class Casambi:
         self._casaNetwork: Optional[Network] = None
 
         self._unitChangedCallbacks: list[Callable[[Unit], None]] = []
+        self._disconnectCallbacks: list[Callable[[], None]] = []
 
         self._logger = logging.getLogger(__name__)
         self._opContext = OperationsContext()
@@ -122,7 +123,7 @@ class Casambi:
         self._logger.info(f"Trying to connect to casambi network {addr}...")
 
         self._casaClient = CasambiClient(
-            addr_or_device, self._dataCallback, self._disconnect_callback
+            addr_or_device, self._dataCallback, self._disconnectCallback
         )
 
         if not self._httpClient:
@@ -358,7 +359,7 @@ class Casambi:
         :param handler: The method to call when a new unit state is received.
         """
         self._unitChangedCallbacks.append(handler)
-        self._logger.info(f"Registerd unit changed handler {handler}")
+        self._logger.debug(f"Registered unit changed handler {handler}")
 
     def unregisterUnitChangedHandler(self, handler: Callable[[Unit], None]) -> None:
         """Unregister an existing unit state change handler.
@@ -367,7 +368,27 @@ class Casambi:
         :raises ValueError: If the handler isn't registered.
         """
         self._unitChangedCallbacks.remove(handler)
-        self._logger.info(f"Removed unit changed handler {handler}")
+        self._logger.debug(f"Removed unit changed handler {handler}")
+
+    def registerDisconnectCallback(self, callback: Callable[[], None]) -> None:
+        """Registers a disconnect callback.
+
+        The callback is called whenever the Bluetooth stack reports that
+        the Bluetooth connection to the network was disconnected.
+
+        :params callback: The callback to register.
+        """
+        self._disconnectCallbacks.append(callback)
+        self._logger.debug(f"Registered disconnect callback {callback}")
+
+    def unregisterDisconnectCallback(self, callback: Callable[[], None]) -> None:
+        """Unregister an existing disconnect callback.
+
+        :param callback: The callback to unregister.
+        :raises ValueError: If the callback isn't registered.
+        """
+        self._disconnectCallbacks.remove(callback)
+        self._logger.debug(f"Removed disconnect callback {callback}")
 
     def invalidateCache(self, uuid: str) -> None:
         """Invalidates the cache for a network.
@@ -381,7 +402,7 @@ class Casambi:
         tempCache.setUuid(uuid)
         tempCache.invalidateCache()
 
-    def _disconnect_callback(self) -> None:
+    def _disconnectCallback(self) -> None:
         # Mark all units as offline on disconnect.
         for u in self.units:
             u._online = False
@@ -390,9 +411,18 @@ class Casambi:
                     h(u)
                 except Exception:
                     self._logger.error(
-                        f"Exception occurred in unitChangedCallback {h}.",
+                        f"Exception occurred in unitChangedHandler {h}.",
                         exc_info=True,
                     )
+
+        for d in self._disconnectCallbacks:
+            try:
+                d()
+            except Exception:
+                self._logger.error(
+                    f"Exception occurred in disconnectCallback {d}.",
+                    exc_info=True,
+                )
 
     async def disconnect(self) -> None:
         """Disconnect from the network."""
