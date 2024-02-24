@@ -2,7 +2,7 @@ import json
 import logging
 import pickle
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Final, Optional, cast
 
 import httpx
@@ -44,7 +44,7 @@ class Network:
         self._networkName: Optional[str] = None
         self._networkRevision: Optional[int] = None
 
-        self._unitTypes: dict[int, UnitType] = {}
+        self._unitTypes: dict[int, tuple[Optional[UnitType], datetime]] = {}
         self.units: list[Unit] = []
         self.groups: list[Group] = []
         self.scenes: list[Scene] = []
@@ -250,6 +250,11 @@ class Network:
         units = network["network"]["units"]
         for u in units:
             uType = await self._fetchUnitInfo(u["type"])
+            if uType is None:
+                self._logger.info(
+                    "Failed to fetch type for unit %i. Skipping.", u["type"]
+                )
+                continue
             uObj = Unit(
                 u["type"],
                 u["deviceID"],
@@ -303,14 +308,20 @@ class Network:
 
         self._logger.info("Network updated.")
 
-    async def _fetchUnitInfo(self, id: int) -> UnitType:
+    async def _fetchUnitInfo(self, id: int) -> Optional[UnitType]:
         self._logger.info(f"Fetching unit type for id {id}...")
 
         # Check whether unit type is already cached
-        cachedType = self._unitTypes.get(id)
-        if cachedType:
-            self._logger.info("Using cached type.")
-            return cachedType
+        if id in self._unitTypes:
+            cachedType, cacheExpiry = self._unitTypes[id]
+
+            # We don't want to cache types forever so use an expiry date.
+            if cacheExpiry > datetime.utcnow():
+                self._logger.info("Cache expiry for type %i. Refetching.", id)
+                self._unitTypes.pop(id)
+            else:
+                self._logger.info("Using cached type.")
+                return cachedType
 
         getUnitInfoUrl = f"https://api.casambi.com/fixture/{id}"
         async with AsyncClient() as request:
@@ -318,6 +329,11 @@ class Network:
 
         if res.status_code != httpx.codes.OK:
             self._logger.error(f"Getting unit info returned {res.status_code}")
+            self._unitTypes[id] = (
+                None,
+                datetime.utcnow() + timedelta(days=7),
+            )
+            return None
 
         unitTypeJson = res.json()
 
@@ -356,7 +372,10 @@ class Network:
         )
 
         # Chache unit type
-        self._unitTypes[unitTypeObj.id] = unitTypeObj
+        self._unitTypes[unitTypeObj.id] = (
+            unitTypeObj,
+            datetime.utcnow() + timedelta(days=28),
+        )
 
         self._logger.info("Sucessfully fetched unit type.")
         return unitTypeObj

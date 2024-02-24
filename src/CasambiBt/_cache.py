@@ -9,7 +9,7 @@ from typing import Final, Optional
 _LOGGER = logging.getLogger(__name__)
 
 CACHE_PATH_DEFAULT: Final = Path(os.getcwd()) / "casambi-bt-store"
-CACHE_VERSION: Final = 1
+CACHE_VERSION: Final = 2
 
 # We need a global lock since there could be multiple Caambi instances
 # with their own cache instances pointing to the same folder.
