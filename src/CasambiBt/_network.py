@@ -355,8 +355,8 @@ class Network:
                 controlJson["length"],
                 controlJson["default"],
                 controlJson["readonly"],
-                controlJson["min"] if "min" in controlJson else None,
-                controlJson["max"] if "max" in controlJson else None,
+                controlJson.get("min", None),
+                controlJson.get("max", None),
             )
 
             controls.append(controlObj)

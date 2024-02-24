@@ -10,7 +10,9 @@ profile = "black"
 
 [tool.ruff]
 target-version = "py39"
+exclude = ["demo.py"]
 
+[tool.ruff.lint]
 select = [
     "B007", # Loop control variable {name} not used within loop body
     "B014", # Exception handler with duplicate exception
@@ -47,11 +49,9 @@ ignore = [
     "E731",  # do not assign a lambda expression, use a def
 ]
 
-exclude = ["demo.py"]
-
-[tool.ruff.pyupgrade]
+[tool.ruff.lint.pyupgrade]
 keep-runtime-typing = true
 
-[tool.ruff.mccabe]
+[tool.ruff.lint.mccabe]
 # Unlike Flake8, default to a complexity level of 10.
 max-complexity = 25

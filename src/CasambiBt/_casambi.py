@@ -371,7 +371,7 @@ class Casambi:
         self._logger.debug(f"Removed unit changed handler {handler}")
 
     def registerDisconnectCallback(self, callback: Callable[[], None]) -> None:
-        """Registers a disconnect callback.
+        """Register a disconnect callback.
 
         The callback is called whenever the Bluetooth stack reports that
         the Bluetooth connection to the network was disconnected.

@@ -26,9 +26,7 @@ class OperationsContext:
 
         # Ensure that origin can't overflow.
         # TODO: Check that unsigned is actually correct here.
-        packet = struct.pack(
-            ">HBHHH", flags, op, self.origin & (2**16 - 1), target, 0
-        )
+        packet = struct.pack(">HBHHH", flags, op, self.origin & (2**16 - 1), target, 0)
         self.origin += 1
 
         return packet + payload
