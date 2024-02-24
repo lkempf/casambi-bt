@@ -316,7 +316,7 @@ class Network:
             cachedType, cacheExpiry = self._unitTypes[id]
 
             # We don't want to cache types forever so use an expiry date.
-            if cacheExpiry > datetime.utcnow():
+            if cacheExpiry < datetime.utcnow():
                 self._logger.info("Cache expiry for type %i. Refetching.", id)
                 self._unitTypes.pop(id)
             else:
