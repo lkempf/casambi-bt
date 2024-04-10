@@ -21,6 +21,8 @@ pip install casambi-bt
 
 Have a look at `demo.py` for a small example.
 
+Please note this won't work on Mac OSX since it doesn't expose Bluetooth Mac addresses, which are needed to communicate with the Casambi APIs. Instead, try it on a Raspberry Pi!
+
 ### Casambi network setup
 
 If you have problems connecting to the network please check that your network is configured appropriately before creating an issue. The network I test this with uses the **Evoultion firmware** and is configured as follows (screenshots are for the iOS app but the Android app should look very similar):
