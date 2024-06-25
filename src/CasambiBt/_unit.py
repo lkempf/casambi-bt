@@ -94,7 +94,7 @@ class UnitState:
         self._temperature: Optional[int] = None
         self._vertical: Optional[int] = None
         self._colorsource: Optional[int] = None
-        self._xy: Optional[tuple[int, int]] = None
+        self._xy: Optional[tuple[float, float]] = None
 
     def _check_range(self, value: int, min: int, max: int) -> None:
         if value < min or value > max:
@@ -214,29 +214,18 @@ class UnitState:
     @property
     def colorsource(self) -> Optional[int]:
         return self._colorsource
-
-    @colorsource.setter
-    def colorsource(self, value: int) -> None:
-        self._check_range(value, 0, 3)
-        self._colorsource = value
-
-    @colorsource.deleter
-    def colorsource(self) -> None:
-        self._colorsource = None
     
     XY_RESOLUTION = 11
-    XY_MIN = 0
-    XY_MAX = 2**XY_RESOLUTION - 1
 
     @property
-    def xy(self) -> Optional[tuple[int, int]]:
+    def xy(self) -> Optional[tuple[float, float]]:
         return self._xy
 
     @xy.setter
-    def xy(self, value: tuple[int, int]) -> None:
+    def xy(self, value: tuple[float, float]) -> None:
         x, y = value
-        self._check_range(x, self.XY_MIN, self.XY_MAX)
-        self._check_range(y, self.XY_MIN, self.XY_MAX)
+        self._check_range(x, 0, 1)
+        self._check_range(y, 0, 1)
         self._xy = (x, y)
 
     @xy.deleter
@@ -351,7 +340,8 @@ class Unit:
                 scaledValue = state.colorsource
             elif c.type == UnitControlType.XY and state.xy is not None:
                 x, y = state.xy
-                scaledValue = (x << UnitState.XY_RESOLUTION) | y
+                xyMask = 2**UnitState.XY_RESOLUTION - 1
+                scaledValue = (round(x * xyMask) << UnitState.XY_RESOLUTION) | round(y * xyMask)
             # Use default if unsupported type or unset value in state
             else:
                 scaledValue = c.default
@@ -439,9 +429,10 @@ class Unit:
                 # 3 - ???
                 self._state.colorsource = cInt
             elif c.type == UnitControlType.XY:
-                y = cInt & (2**UnitState.XY_RESOLUTION - 1)
+                xyMask = 2**UnitState.XY_RESOLUTION - 1
+                y = cInt & xyMask
                 x = cInt >> UnitState.XY_RESOLUTION
-                self._state.xy = (x, y)
+                self._state.xy = (x / xyMask, y / xyMask)
             elif c.type == UnitControlType.UNKOWN:
                 # Might be useful for implementing more state types
                 _LOGGER.debug(
