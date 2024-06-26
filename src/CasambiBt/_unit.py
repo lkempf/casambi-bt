@@ -206,14 +206,19 @@ class UnitState:
     @temperature.deleter
     def temperature(self) -> None:
         self.temperature = None
-        
-    COLORSOURCE_RESOLUTION = 8
-    COLORSOURCE_MIN = 0
-    COLORSOURCE_MAX = 2**COLORSOURCE_RESOLUTION - 1
 
     @property
     def colorsource(self) -> Optional[int]:
         return self._colorsource
+
+    @colorsource.setter
+    def colorsource(self, value: int) -> None:
+        self._check_range(value, 0, 3)
+        self._colorsource = value
+
+    @colorsource.deleter
+    def colorsource(self) -> None:
+        self._colorsource = None
     
     XY_RESOLUTION = 11
 
