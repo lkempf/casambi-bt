@@ -30,6 +30,12 @@ class UnitControlType(Enum):
 
     VERTICAL = 5
     """The vertical value of the light can be adjusted."""
+    
+    COLORSOURCE = 6
+    """The light can switch color source. (TW, RGB, XY)"""
+    
+    XY = 7
+    """The color of the light can be controlled using CIE color space."""
 
     UNKOWN = 99
     """State isn't implemented. Control saved for debuggin purposes."""
@@ -87,6 +93,8 @@ class UnitState:
         self._white: Optional[int] = None
         self._temperature: Optional[int] = None
         self._vertical: Optional[int] = None
+        self._colorsource: Optional[int] = None
+        self._xy: Optional[tuple[float, float]] = None
 
     def _check_range(self, value: int, min: int, max: int) -> None:
         if value < min or value > max:
@@ -199,8 +207,38 @@ class UnitState:
     def temperature(self) -> None:
         self.temperature = None
 
+    @property
+    def colorsource(self) -> Optional[int]:
+        return self._colorsource
+
+    @colorsource.setter
+    def colorsource(self, value: int) -> None:
+        self._check_range(value, 0, 3)
+        self._colorsource = value
+
+    @colorsource.deleter
+    def colorsource(self) -> None:
+        self._colorsource = None
+    
+    XY_RESOLUTION = 11
+
+    @property
+    def xy(self) -> Optional[tuple[float, float]]:
+        return self._xy
+
+    @xy.setter
+    def xy(self, value: tuple[float, float]) -> None:
+        x, y = value
+        self._check_range(x, 0, 1)
+        self._check_range(y, 0, 1)
+        self._xy = (x, y)
+
+    @xy.deleter
+    def xy(self) -> None:
+        self._xy = None
+
     def __repr__(self) -> str:
-        return f"UnitState(dimmer={self.dimmer}, vertical={self._vertical}, rgb={self.rgb.__repr__()}, white={self.white}, temperature={self.temperature})"
+        return f"UnitState(dimmer={self.dimmer}, vertical={self._vertical}, rgb={self.rgb.__repr__()}, white={self.white}, temperature={self.temperature}, colorsource={self.colorsource}, xy={self.xy})"
 
 
 # TODO: Make unit immutable (refactor state, on, online out of it)
@@ -303,7 +341,12 @@ class Unit:
                 clampedTemp = min(c.max, max(c.min, state.temperature))
                 tempMask = 2**c.length - 1
                 scaledValue = (tempMask * (clampedTemp - c.min)) // (c.max - c.min)
-
+            elif c.type == UnitControlType.COLORSOURCE and state.colorsource is not None:
+                scaledValue = state.colorsource
+            elif c.type == UnitControlType.XY and state.xy is not None:
+                x, y = state.xy
+                xyMask = 2**UnitState.XY_RESOLUTION - 1
+                scaledValue = (round(x * xyMask) << UnitState.XY_RESOLUTION) | round(y * xyMask)
             # Use default if unsupported type or unset value in state
             else:
                 scaledValue = c.default
@@ -384,6 +427,17 @@ class Unit:
                 tempMask = 2**c.length - 1
                 # TODO: We should probalby try to make this number a bit more round
                 self._state.temperature = int(((cInt / tempMask) * tempRange) + c.min)
+            elif c.type == UnitControlType.COLORSOURCE:
+                # 0 - TW (temperature)
+                # 1 - RGB??
+                # 2 - XY
+                # 3 - ???
+                self._state.colorsource = cInt
+            elif c.type == UnitControlType.XY:
+                xyMask = 2**UnitState.XY_RESOLUTION - 1
+                y = cInt & xyMask
+                x = cInt >> UnitState.XY_RESOLUTION
+                self._state.xy = (x / xyMask, y / xyMask)
             elif c.type == UnitControlType.UNKOWN:
                 # Might be useful for implementing more state types
                 _LOGGER.debug(
