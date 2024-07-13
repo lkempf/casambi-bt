@@ -41,6 +41,15 @@ class UnitControlType(Enum):
     """State isn't implemented. Control saved for debuggin purposes."""
 
 
+@unique
+class ColorSource(Enum):
+    """The possible values for the color source control."""
+
+    TEMPERATURE = 0
+    RGB = 1
+    XY = 2
+
+
 @dataclass(frozen=True, repr=True)
 class UnitControl:
     type: UnitControlType
@@ -93,7 +102,7 @@ class UnitState:
         self._white: Optional[int] = None
         self._temperature: Optional[int] = None
         self._vertical: Optional[int] = None
-        self._colorsource: Optional[int] = None
+        self._colorsource: Optional[ColorSource] = None
         self._xy: Optional[tuple[float, float]] = None
 
     def _check_range(
@@ -210,12 +219,11 @@ class UnitState:
         self.temperature = None
 
     @property
-    def colorsource(self) -> Optional[int]:
+    def colorsource(self) -> Optional[ColorSource]:
         return self._colorsource
 
     @colorsource.setter
-    def colorsource(self, value: int) -> None:
-        self._check_range(value, 0, 3)
+    def colorsource(self, value: ColorSource) -> None:
         self._colorsource = value
 
     @colorsource.deleter
@@ -344,7 +352,7 @@ class Unit:
             elif (
                 c.type == UnitControlType.COLORSOURCE and state.colorsource is not None
             ):
-                scaledValue = state.colorsource
+                scaledValue = state.colorsource.value
             elif c.type == UnitControlType.XY and state.xy is not None:
                 coordLen = c.length // 2
                 x, y = state.xy
@@ -431,11 +439,7 @@ class Unit:
                 # TODO: We should probalby try to make this number a bit more round
                 self._state.temperature = int(((cInt / tempMask) * tempRange) + c.min)
             elif c.type == UnitControlType.COLORSOURCE:
-                # 0 - TW (temperature)
-                # 1 - RGB??
-                # 2 - XY
-                # 3 - ???
-                self._state.colorsource = cInt
+                self._state.colorsource = ColorSource(cInt)
             elif c.type == UnitControlType.XY:
                 coordLen = c.length
                 xyMask = 2**coordLen - 1
