@@ -222,8 +222,6 @@ class UnitState:
     def colorsource(self) -> None:
         self._colorsource = None
 
-    XY_RESOLUTION = 11
-
     @property
     def xy(self) -> Optional[tuple[float, float]]:
         return self._xy
@@ -348,11 +346,10 @@ class Unit:
             ):
                 scaledValue = state.colorsource
             elif c.type == UnitControlType.XY and state.xy is not None:
+                coordLen = c.length // 2
                 x, y = state.xy
-                xyMask = 2**UnitState.XY_RESOLUTION - 1
-                scaledValue = (round(x * xyMask) << UnitState.XY_RESOLUTION) | round(
-                    y * xyMask
-                )
+                xyMask = 2**coordLen - 1
+                scaledValue = (round(x * xyMask) << coordLen) | round(y * xyMask)
             # Use default if unsupported type or unset value in state
             else:
                 scaledValue = c.default
@@ -440,9 +437,10 @@ class Unit:
                 # 3 - ???
                 self._state.colorsource = cInt
             elif c.type == UnitControlType.XY:
-                xyMask = 2**UnitState.XY_RESOLUTION - 1
+                coordLen = c.length
+                xyMask = 2**coordLen - 1
                 y = cInt & xyMask
-                x = cInt >> UnitState.XY_RESOLUTION
+                x = (cInt >> coordLen) & xyMask
                 self._state.xy = (x / xyMask, y / xyMask)
             elif c.type == UnitControlType.UNKOWN:
                 # Might be useful for implementing more state types
