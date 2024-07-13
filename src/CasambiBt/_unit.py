@@ -3,7 +3,7 @@ from binascii import b2a_hex as b2a
 from colorsys import hsv_to_rgb, rgb_to_hsv
 from dataclasses import dataclass
 from enum import Enum, unique
-from typing import Final, Optional
+from typing import Final, Optional, Union
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,10 +30,10 @@ class UnitControlType(Enum):
 
     VERTICAL = 5
     """The vertical value of the light can be adjusted."""
-    
+
     COLORSOURCE = 6
     """The light can switch color source. (TW, RGB, XY)"""
-    
+
     XY = 7
     """The color of the light can be controlled using CIE color space."""
 
@@ -96,7 +96,9 @@ class UnitState:
         self._colorsource: Optional[int] = None
         self._xy: Optional[tuple[float, float]] = None
 
-    def _check_range(self, value: int, min: int, max: int) -> None:
+    def _check_range(
+        self, value: Union[int, float], min: Union[int, float], max: Union[int, float]
+    ) -> None:
         if value < min or value > max:
             raise ValueError(f"{value} is not between {min} and {max}")
 
@@ -219,7 +221,7 @@ class UnitState:
     @colorsource.deleter
     def colorsource(self) -> None:
         self._colorsource = None
-    
+
     XY_RESOLUTION = 11
 
     @property
@@ -341,12 +343,16 @@ class Unit:
                 clampedTemp = min(c.max, max(c.min, state.temperature))
                 tempMask = 2**c.length - 1
                 scaledValue = (tempMask * (clampedTemp - c.min)) // (c.max - c.min)
-            elif c.type == UnitControlType.COLORSOURCE and state.colorsource is not None:
+            elif (
+                c.type == UnitControlType.COLORSOURCE and state.colorsource is not None
+            ):
                 scaledValue = state.colorsource
             elif c.type == UnitControlType.XY and state.xy is not None:
                 x, y = state.xy
                 xyMask = 2**UnitState.XY_RESOLUTION - 1
-                scaledValue = (round(x * xyMask) << UnitState.XY_RESOLUTION) | round(y * xyMask)
+                scaledValue = (round(x * xyMask) << UnitState.XY_RESOLUTION) | round(
+                    y * xyMask
+                )
             # Use default if unsupported type or unset value in state
             else:
                 scaledValue = c.default
