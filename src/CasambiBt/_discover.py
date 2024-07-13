@@ -27,7 +27,7 @@ async def discover() -> list[BLEDevice]:
 
     # Filter out all devices that aren't primary communication endpoints for casambi networks
     discovered = []
-    for key, (d, advertisement) in devices_and_advertisements.items():
+    for _, (d, advertisement) in devices_and_advertisements.items():
         if 963 in advertisement.manufacturer_data:
             if CASA_UUID in advertisement.service_uuids:
                 _LOGGER.debug(f"Discovered networt at {d.address}")
