@@ -249,8 +249,24 @@ class Casambi:
         )
         await self._send(target, payload, OpCode.SetColor)
 
-    # TODO: Implement setTemperature
-    # This isn't that easy since we don't have a min and max for the temperature.
+    async def setTemperature(
+        self, target: Union[Unit, Group, None], temperature: int
+    ) -> None:
+        """Set the temperature for one or multiple units.
+
+        If ``target`` is of type ``Unit`` only this unit is affected.
+        If ``target`` is of type ``Group`` the whole group is affected.
+        if ``target`` is of type ``None`` all units in the network are affected.
+
+        :param target: One or multiple targeted units.
+        :param temperature: The desired temperature in degrees Kelvin.
+        :return: Nothing is returned by this function. To get the new state register a change handler.
+        :raises ValueError: The supplied temperature isn't in range
+        """
+
+        temperature = int(temperature / 50)
+        payload = temperature.to_bytes(1, byteorder="big", signed=False)
+        await self._send(target, payload, OpCode.SetTemperature)
 
     async def turnOn(self, target: Union[Unit, Group, None]) -> None:
         """Turn one or multiple units on to their last level.
