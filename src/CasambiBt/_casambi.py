@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from binascii import b2a_hex as b2a
-from itertools import pairwise  # type: ignore[attr-defined]
+from itertools import pairwise
 from pathlib import Path
 from typing import Any, Callable, Optional, Union, cast
 
@@ -127,8 +127,9 @@ class Casambi:
 
         # Retrieve network information
         uuid = addr.replace(":", "").lower()
-        self._cache.setUuid(uuid)
+        await self._cache.setUuid(uuid)
         self._casaNetwork = Network(uuid, self._httpClient, self._cache)
+        await self._casaNetwork.load()
         try:
             await self._casaNetwork.logIn(password, forceOffline)
         # TODO: I don't like that this logic is in this class but I couldn't think of a better way.
@@ -393,7 +394,7 @@ class Casambi:
         self._disconnectCallbacks.remove(callback)
         self._logger.debug(f"Removed disconnect callback {callback}")
 
-    def invalidateCache(self, uuid: str) -> None:
+    async def invalidateCache(self, uuid: str) -> None:
         """Invalidates the cache for a network.
 
         :param uuid: The address of the network.
@@ -402,8 +403,8 @@ class Casambi:
         # We can't use our own cache here since the invalidation happens
         # before the first connection attempt.
         tempCache = Cache(self._cache._cachePath)
-        tempCache.setUuid(uuid)
-        tempCache.invalidateCache()
+        await tempCache.setUuid(uuid)
+        await tempCache.invalidateCache()
 
     def _disconnectCallback(self) -> None:
         # Mark all units as offline on disconnect.

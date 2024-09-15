@@ -25,24 +25,23 @@ class KeyStore:
         self._logger = logging.getLogger(__name__)
 
         self._cache = cache
-        self._load()
 
-    def _load(self) -> None:
+    async def load(self) -> None:
         self._logger.info("Loading keys...")
-        with self._cache as cachePath:
+        async with self._cache as cachePath:
             if not (cachePath / KEY_CACHE_FILE).exists():
                 self._logger.debug("No cached keys.")
                 return
             self._keys = pickle.load((cachePath / KEY_CACHE_FILE).open("rb"))
             self._logger.debug(f"Loaded {len(self._keys)} keys.")
 
-    def _save(self) -> None:
+    async def _save(self) -> None:
         self._logger.info("Saving keys...")
-        with self._cache as cachePath:
+        async with self._cache as cachePath:
             pickle.dump(self._keys, ((cachePath / KEY_CACHE_FILE).open("wb")))
             self._logger.debug(f"Saved {len(self._keys)} keys.")
 
-    def addKey(self, dict: dict) -> None:
+    async def addKey(self, dict: dict) -> None:
         if "id" not in dict:
             raise KeyError("id")
         id = int(dict["id"])
@@ -79,13 +78,13 @@ class KeyStore:
         keyObj = Key(id, type, role, name, key)
         self._keys.append(keyObj)
         self._logger.info(f"Added key {name} with role {role} to store.")
-        self._save()
+        await self._save()
 
-    def clear(self, save: bool = False) -> None:
+    async def clear(self, save: bool = False) -> None:
         self._keys.clear()
         self._logger.info("Keystore cleared.")
         if save:
-            self._save()
+            await self._save()
 
     def getKey(self) -> Optional[Key]:
         key: Optional[Key] = None
