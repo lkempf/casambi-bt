@@ -57,43 +57,50 @@ class Network:
         self._httpClient = httpClient
 
         self._cache = cache
+
+    async def load(self) -> None:
         self._keystore = KeyStore(self._cache)
+        await self._keystore.load()
 
-        self._loadSession()
-        self._loadTypeCache()
+        await self._loadSession()
+        await self._loadTypeCache()
 
-    def _loadSession(self) -> None:
+    async def _loadSession(self) -> None:
         self._logger.debug("Loading session...")
-        with self._cache as cachePath:
-            if (cachePath / SESSION_CACHE_FILE).exists():
-                self._session = pickle.load((cachePath / SESSION_CACHE_FILE).open("rb"))
+        async with self._cache as cachePath:
+            if await (cachePath / SESSION_CACHE_FILE).exists():
+                sessionData = await (cachePath / SESSION_CACHE_FILE).read_bytes()
+                self._session = pickle.loads(sessionData)
                 self._logger.info("Session loaded.")
 
-    def _saveSesion(self) -> None:
+    async def _saveSesion(self) -> None:
         self._logger.debug("Saving session...")
-        with self._cache as cachePath:
-            pickle.dump(self._session, (cachePath / SESSION_CACHE_FILE).open("wb"))
+        async with self._cache as cachePath:
+            sessionData = pickle.dumps(self._session)
+            await (cachePath / SESSION_CACHE_FILE).write_bytes(sessionData)
 
-    def _loadTypeCache(self) -> None:
+    async def _loadTypeCache(self) -> None:
         self._logger.debug("Loading unit type cache...")
-        with self._cache as cachePath:
-            if (cachePath / TYPES_CACHE_FILE).exists():
-                self._unitTypes = pickle.load((cachePath / TYPES_CACHE_FILE).open("rb"))
+        async with self._cache as cachePath:
+            if await (cachePath / TYPES_CACHE_FILE).exists():
+                typeData = await (cachePath / TYPES_CACHE_FILE).read_bytes()
+                self._unitTypes = pickle.loads(typeData)
                 self._logger.info("Unit type cache loaded.")
 
-    def _saveTypeCache(self) -> None:
+    async def _saveTypeCache(self) -> None:
         self._logger.debug("Saving type cache...")
-        with self._cache as cachePath:
-            pickle.dump(self._unitTypes, (cachePath / TYPES_CACHE_FILE).open("wb"))
+        async with self._cache as cachePath:
+            typeData = pickle.dumps(self._unitTypes)
+            await (cachePath / TYPES_CACHE_FILE).write_bytes(typeData)
 
     async def getNetworkId(self, forceOffline: bool = False) -> None:
         self._logger.info("Getting network id...")
 
-        with self._cache as cachePath:
+        async with self._cache as cachePath:
             networkCacheFile = cachePath / "networkid"
 
-            if networkCacheFile.exists():
-                self._id = networkCacheFile.read_text()
+            if await networkCacheFile.exists():
+                self._id = await networkCacheFile.read_text()
 
         if forceOffline:
             if not self._id:
@@ -126,9 +133,9 @@ class Network:
         new_id = cast(str, res.json()["id"])
         if self._id != new_id:
             self._logger.info(f"Network id changed from {self._id} to {new_id}.")
-            with self._cache as cachePath:
+            async with self._cache as cachePath:
                 networkCacheFile = cachePath / "networkid"
-                networkCacheFile.write_text(new_id)
+                await networkCacheFile.write_text(new_id)
             self._id = new_id
         self._logger.info(f"Got network id {self._id}.")
 
@@ -161,7 +168,7 @@ class Network:
             )
             self._session = _NetworkSession(**sessionJson)
             self._logger.info("Login sucessful.")
-            self._saveSesion()
+            await self._saveSesion()
         else:
             raise AuthenticationError(f"Login failed: {res.status_code}\n{res.text}")
 
@@ -174,7 +181,7 @@ class Network:
 
         # TODO: Save and send revision to receive actual updates?
 
-        with self._cache as cachePath:
+        async with self._cache as cachePath:
             cachedNetworkPah = cachePath / f"{self._id}.json"
             if cachedNetworkPah.exists():
                 network = json.loads(cachedNetworkPah.read_bytes())
@@ -209,7 +216,7 @@ class Network:
                     self._logger.error(
                         "API reports that network is gone. Deleting cache. Retry later."
                     )
-                    self._cache.invalidateCache()
+                    await self._cache.invalidateCache()
 
                 if res.status_code != httpx.codes.OK:
                     self._logger.error(f"Update failed: {res.status_code}\n{res.text}")
@@ -220,9 +227,9 @@ class Network:
                 updateResult = res.json()
                 if updateResult["status"] != "UPTODATE":
                     self._networkRevision = updateResult["network"]["revision"]
-                    with self._cache as cachePath:
+                    async with self._cache as cachePath:
                         cachedNetworkPah = cachePath / f"{self._id}.json"
-                        cachedNetworkPah.write_bytes(res.content)
+                        await cachedNetworkPah.write_bytes(res.content)
                     network = updateResult
                     self._logger.info(
                         f"Fetched updated network with revision {self._networkRevision}"
@@ -241,7 +248,7 @@ class Network:
         if "keyStore" in network["network"]:
             keys = network["network"]["keyStore"]["keys"]
             for k in keys:
-                self._keystore.addKey(k)
+                await self._keystore.addKey(k)
 
         # TODO: Parse managerKey and visitorKey for classic networks.
 
@@ -304,7 +311,7 @@ class Network:
 
         # TODO: Parse more stuff
 
-        self._saveTypeCache()
+        await self._saveTypeCache()
 
         self._logger.info("Network updated.")
 

@@ -1,41 +1,47 @@
+import asyncio
 import logging
 import os
+import pathlib
 import shutil
-import threading
-from pathlib import Path
 from types import TracebackType
 from typing import Final, Optional
 
+from aiopath import AsyncPath  # type: ignore
+
 _LOGGER = logging.getLogger(__name__)
 
-CACHE_PATH_DEFAULT: Final = Path(os.getcwd()) / "casambi-bt-store"
+CACHE_PATH_DEFAULT: Final = AsyncPath(os.getcwd()) / "casambi-bt-store"
 CACHE_VERSION: Final = 2
 
 # We need a global lock since there could be multiple Caambi instances
 # with their own cache instances pointing to the same folder.
-_cacheLock = threading.Lock()
+_cacheLock = asyncio.Lock()
+
+
+def _blocking_delete(path: AsyncPath) -> None:
+    shutil.rmtree(pathlib.Path(path))
 
 
 class Cache:
-    def __init__(self, cachePath: Optional[Path]) -> None:
+    def __init__(self, cachePath: Optional[AsyncPath]) -> None:
         self._cachePath = cachePath if cachePath is not None else CACHE_PATH_DEFAULT
         self._cacheVersionFile = self._cachePath / ".cachever"
         self._uuid: Optional[str] = None
         _LOGGER.info("Selecting cache path %s", self._cachePath)
 
-    def setUuid(self, uuid: str) -> None:
-        with _cacheLock:
+    async def setUuid(self, uuid: str) -> None:
+        async with _cacheLock:
             self._uuid = uuid
 
-    def _ensureCacheValid(self) -> None:
+    async def _ensureCacheValid(self) -> None:
         # We assume that we already have a lock when calling this function
         assert _cacheLock.locked()
 
-        if self._cachePath.exists():
+        if await self._cachePath.exists():
             cacheVer = None
-            if self._cacheVersionFile.exists():
+            if await self._cacheVersionFile.exists():
                 try:
-                    cacheVer = int(self._cacheVersionFile.read_text())
+                    cacheVer = int(await self._cacheVersionFile.read_text())
                     _LOGGER.debug("Read cache version %i.", cacheVer)
                 except ValueError:
                     cacheVer = -1
@@ -43,32 +49,33 @@ class Cache:
             if cacheVer is None:
                 cacheVer = 0
             if cacheVer < CACHE_VERSION:
-                _LOGGER.warn(
+                _LOGGER.warning(
                     "Cache is version %i, version %i is required. Recreating cache.",
                     cacheVer,
                     CACHE_VERSION,
                 )
-                shutil.rmtree(self._cachePath)
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(None, _blocking_delete, self._cachePath)
 
         # This is not a redunant condition. We may have deleted the cache.
-        if not self._cachePath.exists():
+        if not await self._cachePath.exists():
             _LOGGER.info("Creating new cache.")
-            self._cachePath.mkdir(mode=0o700)
-            self._cacheVersionFile.write_text(str(CACHE_VERSION))
+            await self._cachePath.mkdir(mode=0o700)
+            await self._cacheVersionFile.write_text(str(CACHE_VERSION))
 
-    def __enter__(self) -> Path:
-        _cacheLock.acquire()
+    async def __aenter__(self) -> AsyncPath:
+        await _cacheLock.acquire()
 
         if self._uuid is None:
             raise ValueError("UUID not set.")
 
         try:
-            self._ensureCacheValid()
+            await self._ensureCacheValid()
 
-            cacheDir = self._cachePath / self._uuid
-            if not cacheDir.exists():
+            cacheDir = AsyncPath(self._cachePath / self._uuid)
+            if not await cacheDir.exists():
                 _LOGGER.debug("Creating cache entry for id %s", self._uuid)
-                cacheDir.mkdir()
+                await cacheDir.mkdir()
 
             _LOGGER.debug("Returning cache path %s for id %s.", cacheDir, self._uuid)
             return cacheDir
@@ -76,7 +83,7 @@ class Cache:
             _cacheLock.release()
             raise
 
-    def __exit__(
+    async def __aexit__(
         self,
         exc_type: Optional[type[BaseException]],
         exc_val: Optional[BaseException],
@@ -84,12 +91,15 @@ class Cache:
     ) -> None:
         _cacheLock.release()
 
-    def invalidateCache(self) -> None:
-        with _cacheLock:
+    async def invalidateCache(self) -> None:
+        async with _cacheLock:
             if self._uuid is None:
                 raise ValueError("UUID not set.")
-            self._ensureCacheValid()
-            if not (self._cachePath / self._uuid).exists():
+            await self._ensureCacheValid()
+            if not await (self._cachePath / self._uuid).exists():
                 return
             _LOGGER.info("Deleting cache entry %s", self._uuid)
-            shutil.rmtree(self._cachePath / self._uuid)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None, _blocking_delete, self._cachePath / self._uuid
+            )

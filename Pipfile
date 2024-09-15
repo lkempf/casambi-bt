@@ -8,6 +8,7 @@ bleak = ">=0.10"
 bleak_retry_connector = "*"
 cryptography = ">=3.4"
 httpx = ">=0.17"
+aiopath = "0.7.*"
 
 [dev-packages]
 black = "*"
@@ -16,4 +17,4 @@ isort = "*"
 ruff = "*"
 
 [requires]
-python_version = "3.11"
+python_version = "3.12"
