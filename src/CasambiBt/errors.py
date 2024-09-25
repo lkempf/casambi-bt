@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from ._client import ConnectionState
+from ._constants import ConnectionState
 
 
 class CasambiBtError(RuntimeError):

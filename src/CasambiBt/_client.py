@@ -19,19 +19,9 @@ from bleak_retry_connector import (
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric import ec
 
-from ._constants import CASA_AUTH_CHAR_UUID
+from ._constants import CASA_AUTH_CHAR_UUID, ConnectionState
 from ._encryption import Encryptor
 from ._network import Network
-
-
-@unique
-class ConnectionState(IntEnum):
-    NONE = 0
-    CONNECTED = 1
-    KEY_EXCHANGED = 2
-    AUTHENTICATED = 3
-    ERROR = 99
-
 
 # We need to move these imports here to prevent a cycle.
 from .errors import (  # noqa: E402
