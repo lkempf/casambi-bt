@@ -441,7 +441,7 @@ class Unit:
             elif c.type == UnitControlType.COLORSOURCE:
                 self._state.colorsource = ColorSource(cInt)
             elif c.type == UnitControlType.XY:
-                coordLen = c.length
+                coordLen = c.length // 2
                 xyMask = 2**coordLen - 1
                 y = cInt & xyMask
                 x = (cInt >> coordLen) & xyMask
