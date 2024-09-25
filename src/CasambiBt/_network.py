@@ -43,6 +43,7 @@ class Network:
 
         self._networkName: Optional[str] = None
         self._networkRevision: Optional[int] = None
+        self._protocolVersion: int = -1
 
         self._unitTypes: dict[int, tuple[Optional[UnitType], datetime]] = {}
         self.units: list[Unit] = []
@@ -137,8 +138,13 @@ class Network:
             return False
         return not self._session.expired()
 
-    def getKeyStore(self) -> KeyStore:
+    @property
+    def keyStore(self) -> KeyStore:
         return self._keystore
+
+    @property
+    def protocolVersion(self) -> int:
+        return self._protocolVersion
 
     async def logIn(self, password: str, forceOffline: bool = False) -> None:
         await self.getNetworkId(forceOffline)
@@ -236,6 +242,7 @@ class Network:
 
         # Prase general information
         self._networkName = network["network"]["name"]
+        self._protocolVersion = network["network"]["protocolVersion"]
 
         # Parse keys if there are any. Otherwise the network is probably a classic network.
         if "keyStore" in network["network"]:

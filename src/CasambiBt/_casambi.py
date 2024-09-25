@@ -122,10 +122,6 @@ class Casambi:
 
         self._logger.info(f"Trying to connect to casambi network {addr}...")
 
-        self._casaClient = CasambiClient(
-            addr_or_device, self._dataCallback, self._disconnectCallback
-        )
-
         if not self._httpClient:
             self._httpClient = AsyncClient()
 
@@ -144,6 +140,13 @@ class Casambi:
             forceOffline = True
 
         await self._casaNetwork.update(forceOffline)
+
+        self._casaClient = CasambiClient(
+            addr_or_device,
+            self._dataCallback,
+            self._disconnectCallback,
+            self._casaNetwork,
+        )
         await self._connectClient()
 
     async def _connectClient(self) -> None:
@@ -151,8 +154,8 @@ class Casambi:
         self._casaClient = cast(CasambiClient, self._casaClient)
         await self._casaClient.connect()
         try:
-            await self._casaClient.exchangeKey(self._casaNetwork.getKeyStore())  # type: ignore[union-attr]
-            await self._casaClient.authenticate(self._casaNetwork.getKeyStore())  # type: ignore[union-attr]
+            await self._casaClient.exchangeKey()
+            await self._casaClient.authenticate()
         except ProtocolError as e:
             await self._casaClient.disconnect()
             raise e

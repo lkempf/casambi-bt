@@ -65,3 +65,9 @@ class ProtocolError(CasambiBtError):
     """Exception that is raised when communication with the device doesn't follow the expected protocol."""
 
     pass
+
+
+class UnsupportedProtocolVersion(CasambiBtError):
+    """Exception that is raised when the network has an unsupported version."""
+
+    pass
