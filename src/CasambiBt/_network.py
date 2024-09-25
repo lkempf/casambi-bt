@@ -250,7 +250,11 @@ class Network:
             for k in keys:
                 await self._keystore.addKey(k)
 
-        # TODO: Parse managerKey and visitorKey for classic networks.
+        # Parse legacy keys
+        if "visitorKey" in network["network"]:
+            await self._keystore.setLegacyKey(network["network"]["visitorKey"], True)
+        if "managerKey" in network["network"]:
+            await self._keystore.setLegacyKey(network["network"]["managerKey"], False)
 
         # Parse units
         self.units = []
