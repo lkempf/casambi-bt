@@ -167,7 +167,6 @@ class CasambiClient:
             if not (
                 firstResp[0] == 0x1 and firstResp[1] == self._network.protocolVersion
             ):
-                self._connectionState = ConnectionState.ERROR
                 self._logger.error(
                     "Unexpected answer from device! Wrong device or protocol version? Trying to continue."
                 )
