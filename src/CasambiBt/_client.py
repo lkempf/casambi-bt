@@ -51,8 +51,6 @@ class CasambiClient:
         disonnectedCallback: Callable[[], None],
         network: Network,
     ) -> None:
-        self._checkProtocolVersion(network.protocolVersion)
-
         self._gattClient: BleakClient = None  # type: ignore[assignment]
         self._notifySignal = asyncio.Event()
         self._network = network
@@ -82,6 +80,8 @@ class CasambiClient:
         self._dataCallback = dataCallback
         self._disconnectedCallback = disonnectedCallback
         self._activityLock = asyncio.Lock()
+
+        self._checkProtocolVersion(network.protocolVersion)
 
     def _checkProtocolVersion(self, version: int) -> None:
         if version < MIN_VERSION:
