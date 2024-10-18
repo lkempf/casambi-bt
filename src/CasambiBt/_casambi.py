@@ -209,6 +209,24 @@ class Casambi:
         payload = vertical.to_bytes(1, byteorder="big", signed=False)
         await self._send(target, payload, OpCode.SetVertical)
 
+    async def setSlider(self, target: Union[Unit, Group, None], value: int) -> None:
+        """Set the slider for one or multiple units.
+
+        If ``target`` is of type ``Unit`` only this unit is affected.
+        If ``target`` is of type ``Group`` the whole group is affected.
+        if ``target`` is of type ``None`` all units in the network are affected.
+
+        :param target: One or multiple targeted units.
+        :param value: The desired value in range [0, 255].
+        :return: Nothing is returned by this function. To get the new state register a change handler.
+        :raises ValueError: The supplied level isn't in range
+        """
+        if value < 0 or value > 255:
+            raise ValueError()
+
+        payload = value.to_bytes(1, byteorder="big", signed=False)
+        await self._send(target, payload, OpCode.SetSlider)
+
     async def setWhite(self, target: Union[Unit, Group, None], level: int) -> None:
         """Set the white level for one or multiple units.
 

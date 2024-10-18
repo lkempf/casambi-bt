@@ -37,6 +37,12 @@ class UnitControlType(Enum):
     XY = 7
     """The color of the light can be controlled using CIE color space."""
 
+    SLIDER = 8
+    """The slider of the light can be adjusted."""
+
+    SENSOR = 9
+    """A sensor value of the light."""
+
     UNKOWN = 99
     """State isn't implemented. Control saved for debuggin purposes."""
 
@@ -104,6 +110,7 @@ class UnitState:
         self._vertical: Optional[int] = None
         self._colorsource: Optional[ColorSource] = None
         self._xy: Optional[tuple[float, float]] = None
+        self._slider: Optional[int] = None
 
     def _check_range(
         self, value: Union[int, float], min: Union[int, float], max: Union[int, float]
@@ -245,8 +252,25 @@ class UnitState:
     def xy(self) -> None:
         self._xy = None
 
+    SLIDER_RESOLUTION: Final = 8
+    SLIDER_MIN: Final = 0
+    SLIDER_MAX: Final = 2**VERTICAL_RESOLUTION - 1
+
+    @property
+    def slider(self) -> Optional[int]:
+        return self._slider
+
+    @slider.setter
+    def slider(self, value: int) -> None:
+        self._check_range(value, self.SLIDER_MIN, self.SLIDER_MAX)
+        self._slider = value
+
+    @slider.deleter
+    def slider(self) -> None:
+        self.slider = None
+
     def __repr__(self) -> str:
-        return f"UnitState(dimmer={self.dimmer}, vertical={self._vertical}, rgb={self.rgb.__repr__()}, white={self.white}, temperature={self.temperature}, colorsource={self.colorsource}, xy={self.xy})"
+        return f"UnitState(dimmer={self.dimmer}, vertical={self._vertical}, rgb={self.rgb.__repr__()}, white={self.white}, temperature={self.temperature}, colorsource={self.colorsource}, xy={self.xy}, slider={self.slider})"
 
 
 # TODO: Make unit immutable (refactor state, on, online out of it)
@@ -358,6 +382,10 @@ class Unit:
                 x, y = state.xy
                 xyMask = 2**coordLen - 1
                 scaledValue = (round(x * xyMask) << coordLen) | round(y * xyMask)
+            elif c.type == UnitControlType.SLIDER and state.slider is not None:
+                scale = UnitState.SLIDER_RESOLUTION - c.length
+                scaledValue = state.slider >> scale
+
             # Use default if unsupported type or unset value in state
             else:
                 scaledValue = c.default
@@ -446,6 +474,9 @@ class Unit:
                 y = cInt & xyMask
                 x = (cInt >> coordLen) & xyMask
                 self._state.xy = (x / xyMask, y / xyMask)
+            elif c.type == UnitControlType.SLIDER:
+                scale = UnitState.SLIDER_RESOLUTION - c.length
+                self._state.slider = cInt << scale
             elif c.type == UnitControlType.UNKOWN:
                 # Might be useful for implementing more state types
                 _LOGGER.debug(
