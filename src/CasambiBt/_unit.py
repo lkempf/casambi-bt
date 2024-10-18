@@ -3,7 +3,7 @@ from binascii import b2a_hex as b2a
 from colorsys import hsv_to_rgb, rgb_to_hsv
 from dataclasses import dataclass
 from enum import Enum, unique
-from typing import Final, Optional
+from typing import Final, Optional, Union
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,8 +31,23 @@ class UnitControlType(Enum):
     VERTICAL = 5
     """The vertical value of the light can be adjusted."""
 
+    COLORSOURCE = 6
+    """The light can switch color source. (TW, RGB, XY)"""
+
+    XY = 7
+    """The color of the light can be controlled using CIE color space."""
+
     UNKOWN = 99
     """State isn't implemented. Control saved for debuggin purposes."""
+
+
+@unique
+class ColorSource(Enum):
+    """The possible values for the color source control."""
+
+    TEMPERATURE = 0
+    RGB = 1
+    XY = 2
 
 
 @dataclass(frozen=True, repr=True)
@@ -87,8 +102,12 @@ class UnitState:
         self._white: Optional[int] = None
         self._temperature: Optional[int] = None
         self._vertical: Optional[int] = None
+        self._colorsource: Optional[ColorSource] = None
+        self._xy: Optional[tuple[float, float]] = None
 
-    def _check_range(self, value: int, min: int, max: int) -> None:
+    def _check_range(
+        self, value: Union[int, float], min: Union[int, float], max: Union[int, float]
+    ) -> None:
         if value < min or value > max:
             raise ValueError(f"{value} is not between {min} and {max}")
 
@@ -199,8 +218,35 @@ class UnitState:
     def temperature(self) -> None:
         self.temperature = None
 
+    @property
+    def colorsource(self) -> Optional[ColorSource]:
+        return self._colorsource
+
+    @colorsource.setter
+    def colorsource(self, value: ColorSource) -> None:
+        self._colorsource = value
+
+    @colorsource.deleter
+    def colorsource(self) -> None:
+        self._colorsource = None
+
+    @property
+    def xy(self) -> Optional[tuple[float, float]]:
+        return self._xy
+
+    @xy.setter
+    def xy(self, value: tuple[float, float]) -> None:
+        x, y = value
+        self._check_range(x, 0, 1)
+        self._check_range(y, 0, 1)
+        self._xy = (x, y)
+
+    @xy.deleter
+    def xy(self) -> None:
+        self._xy = None
+
     def __repr__(self) -> str:
-        return f"UnitState(dimmer={self.dimmer}, vertical={self._vertical}, rgb={self.rgb.__repr__()}, white={self.white}, temperature={self.temperature})"
+        return f"UnitState(dimmer={self.dimmer}, vertical={self._vertical}, rgb={self.rgb.__repr__()}, white={self.white}, temperature={self.temperature}, colorsource={self.colorsource}, xy={self.xy})"
 
 
 # TODO: Make unit immutable (refactor state, on, online out of it)
@@ -303,7 +349,15 @@ class Unit:
                 clampedTemp = min(c.max, max(c.min, state.temperature))
                 tempMask = 2**c.length - 1
                 scaledValue = (tempMask * (clampedTemp - c.min)) // (c.max - c.min)
-
+            elif (
+                c.type == UnitControlType.COLORSOURCE and state.colorsource is not None
+            ):
+                scaledValue = state.colorsource.value
+            elif c.type == UnitControlType.XY and state.xy is not None:
+                coordLen = c.length // 2
+                x, y = state.xy
+                xyMask = 2**coordLen - 1
+                scaledValue = (round(x * xyMask) << coordLen) | round(y * xyMask)
             # Use default if unsupported type or unset value in state
             else:
                 scaledValue = c.default
@@ -384,6 +438,14 @@ class Unit:
                 tempMask = 2**c.length - 1
                 # TODO: We should probalby try to make this number a bit more round
                 self._state.temperature = int(((cInt / tempMask) * tempRange) + c.min)
+            elif c.type == UnitControlType.COLORSOURCE:
+                self._state.colorsource = ColorSource(cInt)
+            elif c.type == UnitControlType.XY:
+                coordLen = c.length // 2
+                xyMask = 2**coordLen - 1
+                y = cInt & xyMask
+                x = (cInt >> coordLen) & xyMask
+                self._state.xy = (x / xyMask, y / xyMask)
             elif c.type == UnitControlType.UNKOWN:
                 # Might be useful for implementing more state types
                 _LOGGER.debug(

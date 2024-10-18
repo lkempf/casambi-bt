@@ -11,6 +11,7 @@ class OpCode(IntEnum):
     SetWhite = 5
     SetColor = 7
     SetState = 48
+    SetColorXY = 54
 
 
 class OperationsContext:
