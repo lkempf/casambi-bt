@@ -31,12 +31,6 @@ class UnitControlType(Enum):
     VERTICAL = 5
     """The vertical value of the light can be adjusted."""
 
-    SLIDER = 6
-    """The slider of the light can be adjusted."""
-
-    SENSOR = 7
-    """A sensor value of the light."""
-
     UNKOWN = 99
     """State isn't implemented. Control saved for debuggin purposes."""
 
@@ -93,7 +87,6 @@ class UnitState:
         self._white: Optional[int] = None
         self._temperature: Optional[int] = None
         self._vertical: Optional[int] = None
-        self._slider: Optional[int] = None
 
     def _check_range(self, value: int, min: int, max: int) -> None:
         if value < min or value > max:
@@ -206,25 +199,8 @@ class UnitState:
     def temperature(self) -> None:
         self.temperature = None
 
-    SLIDER_RESOLUTION: Final = 8
-    SLIDER_MIN: Final = 0
-    SLIDER_MAX: Final = 2**VERTICAL_RESOLUTION - 1
-
-    @property
-    def slider(self) -> Optional[int]:
-        return self._slider
-
-    @slider.setter
-    def slider(self, value: int) -> None:
-        self._check_range(value, self.SLIDER_MIN, self.SLIDER_MAX)
-        self._slider = value
-
-    @slider.deleter
-    def slider(self) -> None:
-        self.slider = None
-
     def __repr__(self) -> str:
-        return f"UnitState(dimmer={self.dimmer}, vertical={self._vertical}, rgb={self.rgb.__repr__()}, white={self.white}, temperature={self.temperature}, slider={self.slider})"
+        return f"UnitState(dimmer={self.dimmer}, vertical={self._vertical}, rgb={self.rgb.__repr__()}, white={self.white}, temperature={self.temperature})"
 
 
 # TODO: Make unit immutable (refactor state, on, online out of it)
@@ -327,9 +303,6 @@ class Unit:
                 clampedTemp = min(c.max, max(c.min, state.temperature))
                 tempMask = 2**c.length - 1
                 scaledValue = (tempMask * (clampedTemp - c.min)) // (c.max - c.min)
-            elif c.type == UnitControlType.SLIDER and state.slider is not None:
-                scale = UnitState.SLIDER_RESOLUTION - c.length
-                scaledValue = state.slider >> scale
 
             # Use default if unsupported type or unset value in state
             else:
@@ -411,9 +384,6 @@ class Unit:
                 tempMask = 2**c.length - 1
                 # TODO: We should probalby try to make this number a bit more round
                 self._state.temperature = int(((cInt / tempMask) * tempRange) + c.min)
-            elif c.type == UnitControlType.SLIDER:
-                scale = UnitState.SLIDER_RESOLUTION - c.length
-                self._state.slider = cInt << scale
             elif c.type == UnitControlType.UNKOWN:
                 # Might be useful for implementing more state types
                 _LOGGER.debug(
