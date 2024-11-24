@@ -12,7 +12,7 @@ from ._cache import Cache
 from ._client import CasambiClient, ConnectionState, IncommingPacketType
 from ._network import Network
 from ._operation import OpCode, OperationsContext
-from ._unit import Group, Scene, Unit, UnitState
+from ._unit import Group, Scene, Unit, UnitControlType, UnitState
 from .errors import ConnectionStateError, ProtocolError
 
 
@@ -122,10 +122,6 @@ class Casambi:
 
         self._logger.info(f"Trying to connect to casambi network {addr}...")
 
-        self._casaClient = CasambiClient(
-            addr_or_device, self._dataCallback, self._disconnectCallback
-        )
-
         if not self._httpClient:
             self._httpClient = AsyncClient()
 
@@ -145,6 +141,13 @@ class Casambi:
             forceOffline = True
 
         await self._casaNetwork.update(forceOffline)
+
+        self._casaClient = CasambiClient(
+            addr_or_device,
+            self._dataCallback,
+            self._disconnectCallback,
+            self._casaNetwork,
+        )
         await self._connectClient()
 
     async def _connectClient(self) -> None:
@@ -152,8 +155,8 @@ class Casambi:
         self._casaClient = cast(CasambiClient, self._casaClient)
         await self._casaClient.connect()
         try:
-            await self._casaClient.exchangeKey(self._casaNetwork.getKeyStore())  # type: ignore[union-attr]
-            await self._casaClient.authenticate(self._casaNetwork.getKeyStore())  # type: ignore[union-attr]
+            await self._casaClient.exchangeKey()
+            await self._casaClient.authenticate()
         except ProtocolError as e:
             await self._casaClient.disconnect()
             raise e
@@ -206,6 +209,24 @@ class Casambi:
         payload = vertical.to_bytes(1, byteorder="big", signed=False)
         await self._send(target, payload, OpCode.SetVertical)
 
+    async def setSlider(self, target: Union[Unit, Group, None], value: int) -> None:
+        """Set the slider for one or multiple units.
+
+        If ``target`` is of type ``Unit`` only this unit is affected.
+        If ``target`` is of type ``Group`` the whole group is affected.
+        if ``target`` is of type ``None`` all units in the network are affected.
+
+        :param target: One or multiple targeted units.
+        :param value: The desired value in range [0, 255].
+        :return: Nothing is returned by this function. To get the new state register a change handler.
+        :raises ValueError: The supplied level isn't in range
+        """
+        if value < 0 or value > 255:
+            raise ValueError()
+
+        payload = value.to_bytes(1, byteorder="big", signed=False)
+        await self._send(target, payload, OpCode.SetSlider)
+
     async def setWhite(self, target: Union[Unit, Group, None], level: int) -> None:
         """Set the white level for one or multiple units.
 
@@ -250,8 +271,56 @@ class Casambi:
         )
         await self._send(target, payload, OpCode.SetColor)
 
-    # TODO: Implement setTemperature
-    # This isn't that easy since we don't have a min and max for the temperature.
+    async def setTemperature(
+        self, target: Union[Unit, Group, None], temperature: int
+    ) -> None:
+        """Set the temperature for one or multiple units.
+
+        If ``target`` is of type ``Unit`` only this unit is affected.
+        If ``target`` is of type ``Group`` the whole group is affected.
+        if ``target`` is of type ``None`` all units in the network are affected.
+
+        :param target: One or multiple targeted units.
+        :param temperature: The desired temperature in degrees Kelvin.
+        :return: Nothing is returned by this function. To get the new state register a change handler.
+        :raises ValueError: The supplied temperature isn't in range
+        """
+
+        temperature = int(temperature / 50)
+        payload = temperature.to_bytes(1, byteorder="big", signed=False)
+        await self._send(target, payload, OpCode.SetTemperature)
+
+    async def setColorXY(
+        self, target: Union[Unit, Group, None], xyColor: tuple[float, float]
+    ) -> None:
+        """Set the xy color for one or multiple units.
+
+        If ``target`` is of type ``Unit`` only this unit is affected.
+        If ``target`` is of type ``Group`` the whole group is affected.
+        if ``target`` is of type ``None`` all units in the network are affected.
+
+        :param target: One or multiple targeted units.
+        :param xyColor: The desired color as a pair of floats in the range [0.0, 1.0].
+        :return: Nothing is returned by this function. To get the new state register a change handler.
+        :raises ValueError: The supplied XYColor isn't in range or not supported by the supplied unit.
+        """
+
+        if xyColor[0] < 0.0 or xyColor[0] > 1.0 or xyColor[1] < 0.0 or xyColor[1] > 1.0:
+            raise ValueError("Color out of range.")
+
+        # We assume a default length of 22 bits, so 11 bits per coordinate. Is this sane?
+        coordLen = 11
+        if target is not None and isinstance(target, Unit):
+            control = target.unitType.get_control(UnitControlType.XY)
+            if control is None:
+                raise ValueError("The control isn't supported by this unit.")
+            coordLen = control.length // 2
+        mask = (1 << coordLen) - 1
+        x = round(xyColor[0] * mask) & mask
+        y = round(xyColor[1] * mask) & mask
+
+        payload = ((x << coordLen) | y).to_bytes(3, byteorder="little", signed=False)
+        await self._send(target, payload, OpCode.SetColorXY)
 
     async def turnOn(self, target: Union[Unit, Group, None]) -> None:
         """Turn one or multiple units on to their last level.

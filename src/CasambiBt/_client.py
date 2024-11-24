@@ -4,7 +4,7 @@ import struct
 from binascii import b2a_hex as b2a
 from enum import IntEnum, unique
 from hashlib import sha256
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Final, Optional, Union
 
 from bleak import BleakClient
 from bleak.backends.characteristic import BleakGATTCharacteristic
@@ -19,19 +19,9 @@ from bleak_retry_connector import (
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric import ec
 
-from ._constants import CASA_AUTH_CHAR_UUID
+from ._constants import CASA_AUTH_CHAR_UUID, ConnectionState
 from ._encryption import Encryptor
-from ._keystore import KeyStore
-
-
-@unique
-class ConnectionState(IntEnum):
-    NONE = 0
-    CONNECTED = 1
-    KEY_EXCHANGED = 2
-    AUTHENTICATED = 3
-    ERROR = 99
-
+from ._network import Network
 
 # We need to move these imports here to prevent a cycle.
 from .errors import (  # noqa: E402
@@ -39,6 +29,7 @@ from .errors import (  # noqa: E402
     ConnectionStateError,
     NetworkNotFoundError,
     ProtocolError,
+    UnsupportedProtocolVersion,
 )
 
 
@@ -48,15 +39,21 @@ class IncommingPacketType(IntEnum):
     NetworkConfig = 9
 
 
+MIN_VERSION: Final[int] = 10
+MAX_VERSION: Final[int] = 10
+
+
 class CasambiClient:
     def __init__(
         self,
         address_or_device: Union[str, BLEDevice],
         dataCallback: Callable[[IncommingPacketType, dict[str, Any]], None],
         disonnectedCallback: Callable[[], None],
+        network: Network,
     ) -> None:
         self._gattClient: BleakClient = None  # type: ignore[assignment]
         self._notifySignal = asyncio.Event()
+        self._network = network
 
         self._mtu: int
         self._unitId: int
@@ -83,6 +80,20 @@ class CasambiClient:
         self._dataCallback = dataCallback
         self._disconnectedCallback = disonnectedCallback
         self._activityLock = asyncio.Lock()
+
+        self._checkProtocolVersion(network.protocolVersion)
+
+    def _checkProtocolVersion(self, version: int) -> None:
+        if version < MIN_VERSION:
+            raise UnsupportedProtocolVersion(
+                f"Legacy version aren't supported currently. Your network version is {version}. Minimum version is {MIN_VERSION}."
+            )
+        if version > MAX_VERSION:
+            self._logger.warning(
+                "Version too new. Your network version is %i. Highest supported version is %i. Continue at your own risk.",
+                version,
+                MAX_VERSION,
+            )
 
     def _checkState(self, desired: ConnectionState) -> None:
         if self._connectionState != desired:
@@ -141,7 +152,7 @@ class CasambiClient:
             self._disconnectedCallback()
         self._connectionState = ConnectionState.NONE
 
-    async def exchangeKey(self, keystore: KeyStore) -> None:
+    async def exchangeKey(self) -> None:
         self._checkState(ConnectionState.CONNECTED)
 
         self._logger.info("Starting key exchange...")
@@ -153,10 +164,11 @@ class CasambiClient:
             self._logger.debug(f"Got {b2a(firstResp)}")
 
             # Check type and protocol version
-            if not (firstResp[0] == 0x1 and firstResp[1] == 0xA):
-                self._connectionState = ConnectionState.ERROR
-                raise ProtocolError(
-                    "Unexpected answer from device! Wrong device or protocol version?"
+            if not (
+                firstResp[0] == 0x1 and firstResp[1] == self._network.protocolVersion
+            ):
+                self._logger.error(
+                    "Unexpected answer from device! Wrong device or protocol version? Trying to continue."
                 )
 
             # Parse device info
@@ -208,7 +220,7 @@ class CasambiClient:
                 self._encryptor = Encryptor(self._transportKey)
 
                 # Skip auth if the network doesn't use a key.
-                if keystore.getKey():
+                if self._network.keyStore.getKey():
                     self._connectionState = ConnectionState.KEY_EXCHANGED
                 else:
                     self._connectionState = ConnectionState.AUTHENTICATED
@@ -294,11 +306,11 @@ class CasambiClient:
             self._connectionState = ConnectionState.ERROR
             self._notifySignal.set()
 
-    async def authenticate(self, keystore: KeyStore) -> None:
+    async def authenticate(self) -> None:
         self._checkState(ConnectionState.KEY_EXCHANGED)
 
         self._logger.info("Authenicating channel...")
-        key = keystore.getKey()  # Session key
+        key = self._network.keyStore.getKey()  # Session key
 
         if not key:
             self._logger.info("No key in keystore. Skipping auth.")

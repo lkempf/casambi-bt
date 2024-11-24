@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from ._client import ConnectionState
+from ._constants import ConnectionState
 
 
 class CasambiBtError(RuntimeError):
@@ -63,5 +63,11 @@ class BluetoothError(CasambiBtError):
 
 class ProtocolError(CasambiBtError):
     """Exception that is raised when communication with the device doesn't follow the expected protocol."""
+
+    pass
+
+
+class UnsupportedProtocolVersion(CasambiBtError):
+    """Exception that is raised when the network has an unsupported version."""
 
     pass
