@@ -4,7 +4,7 @@ import os
 import pathlib
 import shutil
 from types import TracebackType
-from typing import Final, Optional
+from typing import Final
 
 from aiopath import AsyncPath  # type: ignore
 
@@ -23,10 +23,10 @@ def _blocking_delete(path: AsyncPath) -> None:
 
 
 class Cache:
-    def __init__(self, cachePath: Optional[AsyncPath]) -> None:
+    def __init__(self, cachePath: AsyncPath | None) -> None:
         self._cachePath = cachePath if cachePath is not None else CACHE_PATH_DEFAULT
         self._cacheVersionFile = self._cachePath / ".cachever"
-        self._uuid: Optional[str] = None
+        self._uuid: str | None = None
         _LOGGER.info("Selecting cache path %s", self._cachePath)
 
     async def setUuid(self, uuid: str) -> None:
@@ -85,9 +85,9 @@ class Cache:
 
     async def __aexit__(
         self,
-        exc_type: Optional[type[BaseException]],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[TracebackType],
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
     ) -> None:
         _cacheLock.release()
 

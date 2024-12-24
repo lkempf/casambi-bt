@@ -3,7 +3,7 @@ import logging
 import pickle
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Final, Optional, cast
+from typing import Final, cast
 
 import httpx
 from httpx import AsyncClient, RequestError
@@ -39,13 +39,13 @@ class _NetworkSession:
 
 class Network:
     def __init__(self, uuid: str, httpClient: AsyncClient, cache: Cache) -> None:
-        self._session: Optional[_NetworkSession] = None
+        self._session: _NetworkSession | None = None
 
-        self._networkName: Optional[str] = None
-        self._networkRevision: Optional[int] = None
+        self._networkName: str | None = None
+        self._networkRevision: int | None = None
         self._protocolVersion: int = -1
 
-        self._unitTypes: dict[int, tuple[Optional[UnitType], datetime]] = {}
+        self._unitTypes: dict[int, tuple[UnitType | None, datetime]] = {}
         self.units: list[Unit] = []
         self.groups: list[Group] = []
         self.scenes: list[Scene] = []
@@ -53,7 +53,7 @@ class Network:
         self._logger = logging.getLogger(__name__)
         # TODO: Create LoggingAdapter to prepend uuid.
 
-        self._id: Optional[str] = None
+        self._id: str | None = None
         self._uuid = uuid
         self._httpClient = httpClient
 
@@ -322,7 +322,7 @@ class Network:
 
         self._logger.info("Network updated.")
 
-    async def _fetchUnitInfo(self, id: int) -> Optional[UnitType]:
+    async def _fetchUnitInfo(self, id: int) -> UnitType | None:
         self._logger.info(f"Fetching unit type for id {id}...")
 
         # Check whether unit type is already cached

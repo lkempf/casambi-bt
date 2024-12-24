@@ -1,9 +1,10 @@
 import asyncio
 import logging
 from binascii import b2a_hex as b2a
+from collections.abc import Callable
 from itertools import pairwise
 from pathlib import Path
-from typing import Any, Callable, Optional, Union, cast
+from typing import Any, cast
 
 from bleak.backends.device import BLEDevice
 from httpx import AsyncClient, RequestError
@@ -24,10 +25,12 @@ class Casambi:
     """
 
     def __init__(
-        self, httpClient: Optional[AsyncClient] = None, cachePath: Optional[Path] = None
+        self,
+        httpClient: AsyncClient | None = None,
+        cachePath: Path | None = None,
     ) -> None:
-        self._casaClient: Optional[CasambiClient] = None
-        self._casaNetwork: Optional[Network] = None
+        self._casaClient: CasambiClient | None = None
+        self._casaNetwork: Network | None = None
 
         self._unitChangedCallbacks: list[Callable[[Unit], None]] = []
         self._disconnectCallbacks: list[Callable[[], None]] = []
@@ -96,7 +99,7 @@ class Casambi:
 
     async def connect(
         self,
-        addr_or_device: Union[str, BLEDevice],
+        addr_or_device: str | BLEDevice,
         password: str,
         forceOffline: bool = False,
     ) -> None:
@@ -171,7 +174,7 @@ class Casambi:
         stateBytes = target.getStateAsBytes(state)
         await self._send(target, stateBytes, OpCode.SetState)
 
-    async def setLevel(self, target: Union[Unit, Group, None], level: int) -> None:
+    async def setLevel(self, target: Unit | Group | None, level: int) -> None:
         """Set the level (brightness) for one or multiple units.
 
         If ``target`` is of type ``Unit`` only this unit is affected.
@@ -189,9 +192,7 @@ class Casambi:
         payload = level.to_bytes(1, byteorder="big", signed=False)
         await self._send(target, payload, OpCode.SetLevel)
 
-    async def setVertical(
-        self, target: Union[Unit, Group, None], vertical: int
-    ) -> None:
+    async def setVertical(self, target: Unit | Group | None, vertical: int) -> None:
         """Set the vertical (balance between top and bottom LED) for one or multiple units.
 
         If ``target`` is of type ``Unit`` only this unit is affected.
@@ -209,7 +210,7 @@ class Casambi:
         payload = vertical.to_bytes(1, byteorder="big", signed=False)
         await self._send(target, payload, OpCode.SetVertical)
 
-    async def setSlider(self, target: Union[Unit, Group, None], value: int) -> None:
+    async def setSlider(self, target: Unit | Group | None, value: int) -> None:
         """Set the slider for one or multiple units.
 
         If ``target`` is of type ``Unit`` only this unit is affected.
@@ -227,7 +228,7 @@ class Casambi:
         payload = value.to_bytes(1, byteorder="big", signed=False)
         await self._send(target, payload, OpCode.SetSlider)
 
-    async def setWhite(self, target: Union[Unit, Group, None], level: int) -> None:
+    async def setWhite(self, target: Unit | Group | None, level: int) -> None:
         """Set the white level for one or multiple units.
 
         If ``target`` is of type ``Unit`` only this unit is affected.
@@ -246,7 +247,7 @@ class Casambi:
         await self._send(target, payload, OpCode.SetWhite)
 
     async def setColor(
-        self, target: Union[Unit, Group, None], rgbColor: tuple[int, int, int]
+        self, target: Unit | Group | None, rgbColor: tuple[int, int, int]
     ) -> None:
         """Set the rgb color for one or multiple units.
 
@@ -272,7 +273,7 @@ class Casambi:
         await self._send(target, payload, OpCode.SetColor)
 
     async def setTemperature(
-        self, target: Union[Unit, Group, None], temperature: int
+        self, target: Unit | Group | None, temperature: int
     ) -> None:
         """Set the temperature for one or multiple units.
 
@@ -291,7 +292,7 @@ class Casambi:
         await self._send(target, payload, OpCode.SetTemperature)
 
     async def setColorXY(
-        self, target: Union[Unit, Group, None], xyColor: tuple[float, float]
+        self, target: Unit | Group | None, xyColor: tuple[float, float]
     ) -> None:
         """Set the xy color for one or multiple units.
 
@@ -322,7 +323,7 @@ class Casambi:
         payload = ((x << coordLen) | y).to_bytes(3, byteorder="little", signed=False)
         await self._send(target, payload, OpCode.SetColorXY)
 
-    async def turnOn(self, target: Union[Unit, Group, None]) -> None:
+    async def turnOn(self, target: Unit | Group | None) -> None:
         """Turn one or multiple units on to their last level.
 
         If ``target`` is of type ``Unit`` only this unit is affected.
@@ -348,7 +349,7 @@ class Casambi:
         await self.setLevel(target, level)  # type: ignore[arg-type]
 
     async def _send(
-        self, target: Union[Unit, Group, Scene, None], state: bytes, opcode: OpCode
+        self, target: Unit | Group | Scene | None, state: bytes, opcode: OpCode
     ) -> None:
         if self._casaClient is None:
             raise ConnectionStateError(

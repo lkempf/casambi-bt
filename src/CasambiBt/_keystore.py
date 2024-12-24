@@ -2,7 +2,7 @@ import binascii
 import logging
 import pickle
 from dataclasses import dataclass
-from typing import Final, Optional
+from typing import Final
 
 from ._cache import Cache
 
@@ -86,8 +86,8 @@ class KeyStore:
         if save:
             await self._save()
 
-    def getKey(self) -> Optional[Key]:
-        key: Optional[Key] = None
+    def getKey(self) -> Key | None:
+        key: Key | None = None
         for k in self._keys:
             if not key:
                 key = k

@@ -2,9 +2,10 @@ import asyncio
 import logging
 import struct
 from binascii import b2a_hex as b2a
+from collections.abc import Callable
 from enum import IntEnum, unique
 from hashlib import sha256
-from typing import Any, Callable, Final, Optional, Union
+from typing import Any, Final
 
 from bleak import BleakClient
 from bleak.backends.characteristic import BleakGATTCharacteristic
@@ -46,7 +47,7 @@ MAX_VERSION: Final[int] = 10
 class CasambiClient:
     def __init__(
         self,
-        address_or_device: Union[str, BLEDevice],
+        address_or_device: str | BLEDevice,
         dataCallback: Callable[[IncommingPacketType, dict[str, Any]], None],
         disonnectedCallback: Callable[[], None],
         network: Network,
@@ -67,7 +68,7 @@ class CasambiClient:
         self._inPacketCount = 0
 
         self._callbackQueue: asyncio.Queue[tuple[BleakGATTCharacteristic, bytes]]
-        self._callbackTask: Optional[asyncio.Task[None]] = None
+        self._callbackTask: asyncio.Task[None] | None = None
 
         self._address_or_devive = address_or_device
         self.address = (
@@ -370,7 +371,7 @@ class CasambiClient:
         self._notifySignal.set()
 
     async def _writeEncPacket(
-        self, packet: bytes, id: int, char: Union[str, BleakGATTCharacteristic]
+        self, packet: bytes, id: int, char: str | BleakGATTCharacteristic
     ) -> None:
         encPacket = self._encryptor.encryptThenMac(packet, self._getNonce(id))
         try:
@@ -381,7 +382,7 @@ class CasambiClient:
             else:
                 raise e
 
-    def _getNonce(self, id: Union[int, bytes]) -> bytes:
+    def _getNonce(self, id: int | bytes) -> bytes:
         if isinstance(id, int):
             id = id.to_bytes(4, "little")
         return self._nonce[:4] + id + self._nonce[8:]

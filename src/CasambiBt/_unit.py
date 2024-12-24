@@ -3,7 +3,7 @@ from binascii import b2a_hex as b2a
 from colorsys import hsv_to_rgb, rgb_to_hsv
 from dataclasses import dataclass
 from enum import Enum, unique
-from typing import Final, Optional, Union
+from typing import Final
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -64,8 +64,8 @@ class UnitControl:
     default: int
     readonly: bool
 
-    min: Optional[int] = None
-    max: Optional[int] = None
+    min: int | None = None
+    max: int | None = None
 
 
 @dataclass(frozen=True, repr=True)
@@ -84,7 +84,7 @@ class UnitType:
     stateLength: int
     controls: list[UnitControl]
 
-    def get_control(self, controlType: UnitControlType) -> Optional[UnitControl]:
+    def get_control(self, controlType: UnitControlType) -> UnitControl | None:
         """Return the control description if the unit type supports the given type of control.
 
         :param controlType: The desired control type.
@@ -103,17 +103,17 @@ class UnitState:
     """Parsed representation of the state of a unit."""
 
     def __init__(self) -> None:
-        self._dimmer: Optional[int] = None
-        self._rgb: Optional[tuple[int, int, int]] = None
-        self._white: Optional[int] = None
-        self._temperature: Optional[int] = None
-        self._vertical: Optional[int] = None
-        self._colorsource: Optional[ColorSource] = None
-        self._xy: Optional[tuple[float, float]] = None
-        self._slider: Optional[int] = None
+        self._dimmer: int | None = None
+        self._rgb: tuple[int, int, int] | None = None
+        self._white: int | None = None
+        self._temperature: int | None = None
+        self._vertical: int | None = None
+        self._colorsource: ColorSource | None = None
+        self._xy: tuple[float, float] | None = None
+        self._slider: int | None = None
 
     def _check_range(
-        self, value: Union[int, float], min: Union[int, float], max: Union[int, float]
+        self, value: int | float, min: int | float, max: int | float
     ) -> None:
         if value < min or value > max:
             raise ValueError(f"{value} is not between {min} and {max}")
@@ -123,7 +123,7 @@ class UnitState:
     DIMMER_MAX: Final = 2**DIMMER_RESOLUTION - 1
 
     @property
-    def dimmer(self) -> Optional[int]:
+    def dimmer(self) -> int | None:
         return self._dimmer
 
     @dimmer.setter
@@ -140,7 +140,7 @@ class UnitState:
     VERTICAL_MAX: Final = 2**VERTICAL_RESOLUTION - 1
 
     @property
-    def vertical(self) -> Optional[int]:
+    def vertical(self) -> int | None:
         return self._vertical
 
     @vertical.setter
@@ -157,7 +157,7 @@ class UnitState:
     RGB_MAX: Final = 2**RGB_RESOLUTION - 1
 
     @property
-    def rgb(self) -> Optional[tuple[int, int, int]]:
+    def rgb(self) -> tuple[int, int, int] | None:
         return self._rgb
 
     @rgb.setter
@@ -174,7 +174,7 @@ class UnitState:
         self._rgb = None
 
     @property
-    def hs(self) -> Optional[tuple[float, float]]:
+    def hs(self) -> tuple[float, float] | None:
         """Convert RGB into HS where H is a float in [0..1[ and S a float in [0..1]."""
         if self._rgb is None:
             return None
@@ -201,7 +201,7 @@ class UnitState:
     WHITE_MAX = 2**WHITE_RESOLUTION - 1
 
     @property
-    def white(self) -> Optional[int]:
+    def white(self) -> int | None:
         return self._white
 
     @white.setter
@@ -214,7 +214,7 @@ class UnitState:
         self._white = None
 
     @property
-    def temperature(self) -> Optional[int]:
+    def temperature(self) -> int | None:
         return self._temperature
 
     @temperature.setter
@@ -226,7 +226,7 @@ class UnitState:
         self.temperature = None
 
     @property
-    def colorsource(self) -> Optional[ColorSource]:
+    def colorsource(self) -> ColorSource | None:
         return self._colorsource
 
     @colorsource.setter
@@ -238,7 +238,7 @@ class UnitState:
         self._colorsource = None
 
     @property
-    def xy(self) -> Optional[tuple[float, float]]:
+    def xy(self) -> tuple[float, float] | None:
         return self._xy
 
     @xy.setter
@@ -257,7 +257,7 @@ class UnitState:
     SLIDER_MAX: Final = 2**VERTICAL_RESOLUTION - 1
 
     @property
-    def slider(self) -> Optional[int]:
+    def slider(self) -> int | None:
         return self._slider
 
     @slider.setter
@@ -296,12 +296,12 @@ class Unit:
 
     unitType: UnitType
 
-    _state: Optional[UnitState] = None
+    _state: UnitState | None = None
     _on: bool = False
     _online: bool = False
 
     @property
-    def state(self) -> Optional[UnitState]:
+    def state(self) -> UnitState | None:
         """Get the state of the unit if it has been set."""
         return self._state
 

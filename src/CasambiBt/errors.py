@@ -1,7 +1,5 @@
 """Error types for CasambiBt."""
 
-from typing import Optional
-
 from ._constants import ConnectionState
 
 
@@ -42,7 +40,7 @@ class ConnectionStateError(CasambiBtError):
         self,
         expected: ConnectionState,
         got: ConnectionState,
-        expl: Optional[str] = None,
+        expl: str | None = None,
     ) -> None:
         """Create a new `ConnectionStateError`."""
         self.expected = expected
