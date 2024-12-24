@@ -189,8 +189,8 @@ class Network:
 
         async with self._cache as cachePath:
             cachedNetworkPah = cachePath / f"{self._id}.json"
-            if cachedNetworkPah.exists():
-                network = json.loads(cachedNetworkPah.read_bytes())
+            if await cachedNetworkPah.exists():
+                network = json.loads(await cachedNetworkPah.read_bytes())
                 self._networkRevision = network["network"]["revision"]
                 self._logger.info(
                     f"Loaded cached network. Revision: {self._networkRevision}"
@@ -338,8 +338,7 @@ class Network:
                 return cachedType
 
         getUnitInfoUrl = f"https://api.casambi.com/fixture/{id}"
-        async with AsyncClient() as request:
-            res = await request.get(getUnitInfoUrl)
+        res = await self._httpClient.get(getUnitInfoUrl)
 
         if res.status_code != httpx.codes.OK:
             self._logger.error(f"Getting unit info returned {res.status_code}")
