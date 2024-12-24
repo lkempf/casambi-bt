@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import struct
+from abc import ABC, abstractmethod
 from binascii import b2a_hex as b2a
 from enum import IntEnum, unique
 from hashlib import sha256
@@ -39,11 +40,13 @@ class IncommingPacketType(IntEnum):
     NetworkConfig = 9
 
 
-MIN_VERSION: Final[int] = 10
-MAX_VERSION: Final[int] = 10
+MIN_EVO_VERSION: Final[int] = 10
+MAX_EVO_VERSION: Final[int] = 10
+FIRST_EVO_VERSION: Final[int] = 10
+SUPPORTED_CLASSIC_VERSION: Final[int] = 5
 
 
-class CasambiClient:
+class CasambiClient(ABC):
     def __init__(
         self,
         address_or_device: Union[str, BLEDevice],
@@ -83,17 +86,13 @@ class CasambiClient:
 
         self._checkProtocolVersion(network.protocolVersion)
 
+    @abstractmethod
     def _checkProtocolVersion(self, version: int) -> None:
-        if version < MIN_VERSION:
-            raise UnsupportedProtocolVersion(
-                f"Legacy version aren't supported currently. Your network version is {version}. Minimum version is {MIN_VERSION}."
-            )
-        if version > MAX_VERSION:
-            self._logger.warning(
-                "Version too new. Your network version is %i. Highest supported version is %i. Continue at your own risk.",
-                version,
-                MAX_VERSION,
-            )
+        pass
+
+    @staticmethod
+    def isClassicNetwork(version: int) -> bool:
+        return version < FIRST_EVO_VERSION
 
     def _checkState(self, desired: ConnectionState) -> None:
         if self._connectionState != desired:
@@ -152,81 +151,6 @@ class CasambiClient:
             self._disconnectedCallback()
         self._connectionState = ConnectionState.NONE
 
-    async def exchangeKey(self) -> None:
-        self._checkState(ConnectionState.CONNECTED)
-
-        self._logger.info("Starting key exchange...")
-
-        await self._activityLock.acquire()
-        try:
-            # Initiate communication with device
-            firstResp = await self._gattClient.read_gatt_char(CASA_AUTH_CHAR_UUID)
-            self._logger.debug(f"Got {b2a(firstResp)}")
-
-            # Check type and protocol version
-            if not (
-                firstResp[0] == 0x1 and firstResp[1] == self._network.protocolVersion
-            ):
-                self._logger.error(
-                    "Unexpected answer from device! Wrong device or protocol version? Trying to continue."
-                )
-
-            # Parse device info
-            self._mtu, self._unit, self._flags, self._nonce = struct.unpack_from(
-                ">BHH16s", firstResp, 2
-            )
-            self._logger.debug(
-                f"Parsed mtu {self._mtu}, unit {self._unit}, flags {self._flags}, nonce {b2a(self._nonce)}"
-            )
-
-            # Device will initiate key exchange, so listen for that
-            self._logger.debug("Starting notify")
-            await self._gattClient.start_notify(
-                CASA_AUTH_CHAR_UUID, self._queueCallback
-            )
-        finally:
-            self._activityLock.release()
-
-        # Wait for key exchange, will get notified by _exchNotifyCallback
-        await self._notifySignal.wait()
-        await self._activityLock.acquire()
-        try:
-            self._notifySignal.clear()
-            if self._connectionState == ConnectionState.ERROR:
-                raise ProtocolError("Invalid key exchange initiation.")
-
-            # Respond to key exchange
-            pubNums = self._pubKey.public_numbers()
-            keyExchResponse = struct.pack(
-                ">B32s32sB",
-                0x2,
-                pubNums.x.to_bytes(32, byteorder="little", signed=False),
-                pubNums.y.to_bytes(32, byteorder="little", signed=False),
-                0x1,
-            )
-            await self._gattClient.write_gatt_char(CASA_AUTH_CHAR_UUID, keyExchResponse)
-        finally:
-            self._activityLock.release()
-
-        # Wait for success response from _exchNotifyCallback
-        await self._notifySignal.wait()
-        await self._activityLock.acquire()
-        try:
-            self._notifySignal.clear()
-            if self._connectionState == ConnectionState.ERROR:  # type: ignore[comparison-overlap]
-                raise ProtocolError("Failed to negotiate key!")
-            else:
-                self._logger.info("Key exchange sucessful")
-                self._encryptor = Encryptor(self._transportKey)
-
-                # Skip auth if the network doesn't use a key.
-                if self._network.keyStore.getKey():
-                    self._connectionState = ConnectionState.KEY_EXCHANGED
-                else:
-                    self._connectionState = ConnectionState.AUTHENTICATED
-        finally:
-            self._activityLock.release()
-
     def _queueCallback(self, handle: BleakGATTCharacteristic, data: bytes) -> None:
         self._callbackQueue.put_nowait((handle, data))
 
@@ -260,114 +184,21 @@ class CasambiClient:
                 f"Unhandled notify in state {self._connectionState}: {b2a(data)}"
             )
 
+    @abstractmethod
+    async def exchangeKey(self) -> None:
+        pass
+
+    @abstractmethod
     def _exchNofityCallback(self, handle: BleakGATTCharacteristic, data: bytes) -> None:
-        if data[0] == 0x2:
-            # Parse device pubkey
-            x, y = struct.unpack_from("<32s32s", data, 1)
-            x = int.from_bytes(x, byteorder="little")
-            y = int.from_bytes(y, byteorder="little")
-            self._logger.debug(f"Got public key {x}, {y}")
+        pass
 
-            self._devicePubKey = ec.EllipticCurvePublicNumbers(
-                x, y, ec.SECP256R1()
-            ).public_key()
-
-            # Generate key pair for client
-            self._privKey = ec.generate_private_key(ec.SECP256R1())
-            self._pubKey = self._privKey.public_key()
-
-            # Generate shared secret
-            secret = bytearray(self._privKey.exchange(ec.ECDH(), self._devicePubKey))
-            secret.reverse()
-            hashAlgo = sha256()
-            hashAlgo.update(secret)
-            digestedSecret = hashAlgo.digest()
-
-            # Compute transport key
-            self._transportKey = bytearray()
-            for i in range(16):
-                self._transportKey.append(digestedSecret[i] ^ digestedSecret[16 + i])
-
-            # Inform exchangeKey that packet has been parsed
-            self._notifySignal.set()
-
-        elif data[0] == 0x3:
-            if len(data) == 1:
-                # Key exchange is acknowledged by device
-                self._notifySignal.set()
-            else:
-                self._logger.error(
-                    f"Unexpected package length for key exchange response: {b2a(data)}"
-                )
-                self._connectionState = ConnectionState.ERROR
-                self._notifySignal.set()
-        else:
-            self._logger.error(f"Unexcpedted package type in {b2a(data)}.")
-            self._connectionState = ConnectionState.ERROR
-            self._notifySignal.set()
-
+    @abstractmethod
     async def authenticate(self) -> None:
-        self._checkState(ConnectionState.KEY_EXCHANGED)
+        pass
 
-        self._logger.info("Authenicating channel...")
-        key = self._network.keyStore.getKey()  # Session key
-
-        if not key:
-            self._logger.info("No key in keystore. Skipping auth.")
-            # The channel already has to be set to authenticated by exchangeKey.
-            # This needs to be done there a non-handshake packet could be sent right after acking the key exch
-            # and we don't want that packet to end up in _authNofityCallback.
-            return
-
-        await self._activityLock.acquire()
-        try:
-            # Compute client auth digest
-            hashFcnt = sha256()
-            hashFcnt.update(key.key)
-            hashFcnt.update(self._nonce)
-            hashFcnt.update(self._transportKey)
-            authDig = hashFcnt.digest()
-            self._logger.debug(f"Auth digest: {b2a(authDig)}")
-
-            # Send auth packet
-            authPacket = int.to_bytes(1, 4, "little")
-            authPacket += b"\x04"
-            authPacket += key.id.to_bytes(1, "little")
-            authPacket += authDig
-            await self._writeEncPacket(authPacket, 1, CASA_AUTH_CHAR_UUID)
-        finally:
-            self._activityLock.release()
-
-        # Wait for auth response
-        await self._notifySignal.wait()
-
-        await self._activityLock.acquire()
-        try:
-            self._notifySignal.clear()
-            if self._connectionState == ConnectionState.ERROR:
-                raise ProtocolError("Failed to verify authentication response.")
-            else:
-                self._connectionState = ConnectionState.AUTHENTICATED
-                self._logger.info("Authentication successful")
-        finally:
-            self._activityLock.release()
-
+    @abstractmethod
     def _authNofityCallback(self, handle: BleakGATTCharacteristic, data: bytes) -> None:
-        self._logger.info("Processing authentication response...")
-
-        # TODO: Verify counter
-        self._inPacketCount += 1
-
-        try:
-            self._encryptor.decryptAndVerify(data, data[:4] + self._nonce[4:])
-        except InvalidSignature:
-            self._logger.fatal("Invalid signature for auth response!")
-            self._connectionState = ConnectionState.ERROR
-            return
-
-        # TODO: Verify Digest 2 (to compare with response from device); SHA256(key.key||self pubKey point||self._transportKey)
-
-        self._notifySignal.set()
+        pass
 
     async def _writeEncPacket(
         self, packet: bytes, id: int, char: Union[str, BleakGATTCharacteristic]
@@ -493,3 +324,259 @@ class CasambiClient:
 
         self._connectionState = ConnectionState.NONE
         self._logger.info("Disconnected.")
+
+
+class CasambiClientEvolution(CasambiClient):
+    def _checkProtocolVersion(self, version: int) -> None:
+        if version < MIN_EVO_VERSION:
+            raise UnsupportedProtocolVersion(
+                f"Classic version aren't supported by this class. Your network version is {version}. Minimum version is {MIN_EVO_VERSION}."
+            )
+        if version > MAX_EVO_VERSION:
+            self._logger.warning(
+                "Version too new. Your network version is %i. Highest supported version is %i. This version is untested.",
+                version,
+                MAX_EVO_VERSION,
+            )
+
+    async def exchangeKey(self) -> None:
+        self._checkState(ConnectionState.CONNECTED)
+
+        self._logger.info("Starting key exchange...")
+
+        await self._activityLock.acquire()
+        try:
+            # Initiate communication with device
+            firstResp = await self._gattClient.read_gatt_char(CASA_AUTH_CHAR_UUID)
+            self._logger.debug(f"Got {b2a(firstResp)}")
+
+            # Check type and protocol version
+            if not (
+                firstResp[0] == 0x1 and firstResp[1] == self._network.protocolVersion
+            ):
+                self._logger.error(
+                    "Unexpected answer from device! Wrong device or protocol version? Trying to continue."
+                )
+
+            # Parse device info
+            self._mtu, self._unit, self._flags, self._nonce = struct.unpack_from(
+                ">BHH16s", firstResp, 2
+            )
+            self._logger.debug(
+                f"Parsed mtu {self._mtu}, unit {self._unit}, flags {self._flags}, nonce {b2a(self._nonce)}"
+            )
+
+            # Device will initiate key exchange, so listen for that
+            self._logger.debug("Starting notify")
+            await self._gattClient.start_notify(
+                CASA_AUTH_CHAR_UUID, self._queueCallback
+            )
+        finally:
+            self._activityLock.release()
+
+        # Wait for key exchange, will get notified by _exchNotifyCallback
+        await self._notifySignal.wait()
+        await self._activityLock.acquire()
+        try:
+            self._notifySignal.clear()
+            if self._connectionState == ConnectionState.ERROR:
+                raise ProtocolError("Invalid key exchange initiation.")
+
+            # Respond to key exchange
+            pubNums = self._pubKey.public_numbers()
+            keyExchResponse = struct.pack(
+                ">B32s32sB",
+                0x2,
+                pubNums.x.to_bytes(32, byteorder="little", signed=False),
+                pubNums.y.to_bytes(32, byteorder="little", signed=False),
+                0x1,
+            )
+            await self._gattClient.write_gatt_char(CASA_AUTH_CHAR_UUID, keyExchResponse)
+        finally:
+            self._activityLock.release()
+
+        # Wait for success response from _exchNotifyCallback
+        await self._notifySignal.wait()
+        await self._activityLock.acquire()
+        try:
+            self._notifySignal.clear()
+            if self._connectionState == ConnectionState.ERROR:  # type: ignore[comparison-overlap]
+                raise ProtocolError("Failed to negotiate key!")
+            else:
+                self._logger.info("Key exchange sucessful")
+                self._encryptor = Encryptor(self._key)
+
+                # Skip auth if the network doesn't use a key.
+                if self._network.keyStore.getKey():
+                    self._connectionState = ConnectionState.KEY_EXCHANGED
+                else:
+                    self._connectionState = ConnectionState.AUTHENTICATED
+        finally:
+            self._activityLock.release()
+
+    def _exchNofityCallback(self, handle: BleakGATTCharacteristic, data: bytes) -> None:
+        if data[0] == 0x2:
+            # Parse device pubkey
+            x, y = struct.unpack_from("<32s32s", data, 1)
+            x = int.from_bytes(x, byteorder="little")
+            y = int.from_bytes(y, byteorder="little")
+            self._logger.debug(f"Got public key {x}, {y}")
+
+            self._devicePubKey = ec.EllipticCurvePublicNumbers(
+                x, y, ec.SECP256R1()
+            ).public_key()
+
+            # Generate key pair for client
+            self._privKey = ec.generate_private_key(ec.SECP256R1())
+            self._pubKey = self._privKey.public_key()
+
+            # Generate shared secret
+            secret = bytearray(self._privKey.exchange(ec.ECDH(), self._devicePubKey))
+            secret.reverse()
+            hashAlgo = sha256()
+            hashAlgo.update(secret)
+            digestedSecret = hashAlgo.digest()
+
+            # Compute transport key
+            self._key = bytearray()
+            for i in range(16):
+                self._key.append(digestedSecret[i] ^ digestedSecret[16 + i])
+
+            # Inform exchangeKey that packet has been parsed
+            self._notifySignal.set()
+
+        elif data[0] == 0x3:
+            if len(data) == 1:
+                # Key exchange is acknowledged by device
+                self._notifySignal.set()
+            else:
+                self._logger.error(
+                    f"Unexpected package length for key exchange response: {b2a(data)}"
+                )
+                self._connectionState = ConnectionState.ERROR
+                self._notifySignal.set()
+        else:
+            self._logger.error(f"Unexcpedted package type in {b2a(data)}.")
+            self._connectionState = ConnectionState.ERROR
+            self._notifySignal.set()
+
+    async def authenticate(self) -> None:
+        self._checkState(ConnectionState.KEY_EXCHANGED)
+
+        self._logger.info("Authenicating channel...")
+        key = self._network.keyStore.getKey()  # Session key
+
+        if not key:
+            self._logger.info("No key in keystore. Skipping auth.")
+            # The channel already has to be set to authenticated by exchangeKey.
+            # This needs to be done there a non-handshake packet could be sent right after acking the key exch
+            # and we don't want that packet to end up in _authNofityCallback.
+            return
+
+        await self._activityLock.acquire()
+        try:
+            # Compute client auth digest
+            hashFcnt = sha256()
+            hashFcnt.update(key.key)
+            hashFcnt.update(self._nonce)
+            hashFcnt.update(self._key)
+            authDig = hashFcnt.digest()
+            self._logger.debug(f"Auth digest: {b2a(authDig)}")
+
+            # Send auth packet
+            authPacket = int.to_bytes(1, 4, "little")
+            authPacket += b"\x04"
+            authPacket += key.id.to_bytes(1, "little")
+            authPacket += authDig
+            await self._writeEncPacket(authPacket, 1, CASA_AUTH_CHAR_UUID)
+        finally:
+            self._activityLock.release()
+
+        # Wait for auth response
+        await self._notifySignal.wait()
+
+        await self._activityLock.acquire()
+        try:
+            self._notifySignal.clear()
+            if self._connectionState == ConnectionState.ERROR:
+                raise ProtocolError("Failed to verify authentication response.")
+            else:
+                self._connectionState = ConnectionState.AUTHENTICATED
+                self._logger.info("Authentication successful")
+        finally:
+            self._activityLock.release()
+
+    def _authNofityCallback(self, handle: BleakGATTCharacteristic, data: bytes) -> None:
+        self._logger.info("Processing authentication response...")
+
+        # TODO: Verify counter
+        self._inPacketCount += 1
+
+        try:
+            self._encryptor.decryptAndVerify(data, data[:4] + self._nonce[4:])
+        except InvalidSignature:
+            self._logger.fatal("Invalid signature for auth response!")
+            self._connectionState = ConnectionState.ERROR
+            return
+
+        # TODO: Verify Digest 2 (to compare with response from device); SHA256(key.key||self pubKey point||self._key)
+
+        self._notifySignal.set()
+
+
+class CasambiClientClassic(CasambiClient):
+    def _checkProtocolVersion(self, version: int) -> None:
+        if version < FIRST_EVO_VERSION:
+            raise UnsupportedProtocolVersion(
+                "Evolution networks aren't supported by this class."
+            )
+        if version != SUPPORTED_CLASSIC_VERSION:
+            self._logger.warning(
+                "Version unknown. Your network version is %i. Supported version for classic networks is %i. Continuing with an untested version.",
+                version,
+                SUPPORTED_CLASSIC_VERSION,
+            )
+
+    async def exchangeKey(self) -> None:
+        self._checkState(ConnectionState.CONNECTED)
+
+        self._logger.info("Starting key exchange...")
+
+        await self._activityLock.acquire()
+        try:
+            # Initiate communication with device
+            firstResp = await self._gattClient.read_gatt_char(CASA_AUTH_CHAR_UUID)
+            self._logger.debug(f"Got {b2a(firstResp)}")
+
+            # Check type and protocol version
+            if not (
+                firstResp[0] == 0x1 and firstResp[1] == self._network.protocolVersion
+            ):
+                self._logger.error(
+                    "Unexpected answer from device! Wrong device or protocol version? Trying to continue."
+                )
+
+            # Parse device info
+            self._nonce, self._unit, self._flags, self._mtu, protocolVersion = (
+                struct.unpack_from(">4sBBBB", firstResp, 2)
+            )
+
+            if protocolVersion != self._network.protocolVersion:
+                self._logger.warning(
+                    "Device reported unexpected version. Was %i, expected %i.",
+                    protocolVersion,
+                    self._network.protocolVersion,
+                )
+
+            # We skip the second part of the flags here since they are currently unused and optional.
+            self._logger.debug(
+                f"Parsed mtu {self._mtu}, unit {self._unit}, flags {self._flags}, nonce {b2a(self._nonce)}"
+            )
+
+            # Device will initiate key exchange, so listen for that
+            self._logger.debug("Starting notify")
+            await self._gattClient.start_notify(
+                CASA_AUTH_CHAR_UUID, self._queueCallback
+            )
+        finally:
+            self._activityLock.release()

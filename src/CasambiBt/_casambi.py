@@ -9,7 +9,13 @@ from bleak.backends.device import BLEDevice
 from httpx import AsyncClient, RequestError
 
 from ._cache import Cache
-from ._client import CasambiClient, ConnectionState, IncommingPacketType
+from ._client import (
+    CasambiClient,
+    CasambiClientClassic,
+    CasambiClientEvolution,
+    ConnectionState,
+    IncommingPacketType,
+)
 from ._network import Network
 from ._operation import OpCode, OperationsContext
 from ._unit import Group, Scene, Unit, UnitControlType, UnitState
@@ -142,12 +148,20 @@ class Casambi:
 
         await self._casaNetwork.update(forceOffline)
 
-        self._casaClient = CasambiClient(
-            addr_or_device,
-            self._dataCallback,
-            self._disconnectCallback,
-            self._casaNetwork,
-        )
+        if CasambiClient.isClassicNetwork(self._casaNetwork.protocolVersion):
+            self._casaClient = CasambiClientClassic(
+                addr_or_device,
+                self._dataCallback,
+                self._disconnectCallback,
+                self._casaNetwork,
+            )
+        else:
+            self._casaClient = CasambiClientEvolution(
+                addr_or_device,
+                self._dataCallback,
+                self._disconnectCallback,
+                self._casaNetwork,
+            )
         await self._connectClient()
 
     async def _connectClient(self) -> None:
