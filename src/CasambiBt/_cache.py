@@ -23,8 +23,14 @@ def _blocking_delete(path: AsyncPath) -> None:
 
 
 class Cache:
-    def __init__(self, cachePath: AsyncPath | None) -> None:
-        self._cachePath = cachePath if cachePath is not None else CACHE_PATH_DEFAULT
+    def __init__(self, cachePath: AsyncPath | pathlib.Path | None) -> None:
+        if cachePath is None:
+            self._cachePath = CACHE_PATH_DEFAULT
+        elif not isinstance(cachePath, AsyncPath):
+            self._cachePath = AsyncPath(cachePath)
+        else:
+            self._cachePath = cachePath
+
         self._cacheVersionFile = self._cachePath / ".cachever"
         self._uuid: str | None = None
         _LOGGER.info("Selecting cache path %s", self._cachePath)
