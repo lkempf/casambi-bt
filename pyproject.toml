@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 profile = "black"
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py311"
 exclude = ["demo.py"]
 
 [tool.ruff.lint]
