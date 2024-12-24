@@ -32,15 +32,15 @@ class KeyStore:
             if not await (cachePath / KEY_CACHE_FILE).exists():
                 self._logger.debug("No cached keys.")
                 return
-            async with (cachePath / KEY_CACHE_FILE).open("rb") as key_cache:
-                self._keys = pickle.load(key_cache)
+            key_bytes = await (cachePath / KEY_CACHE_FILE).read_bytes()
+            self._keys = pickle.loads(key_bytes)
             self._logger.debug(f"Loaded {len(self._keys)} keys.")
 
     async def _save(self) -> None:
         self._logger.info("Saving keys...")
         async with self._cache as cachePath:
-            async with (cachePath / KEY_CACHE_FILE).open("wb") as key_cache:
-                pickle.dump(self._keys, key_cache)
+            key_bytes = pickle.dumps(self._keys)
+            await (cachePath / KEY_CACHE_FILE).write_bytes(key_bytes)
             self._logger.debug(f"Saved {len(self._keys)} keys.")
 
     async def addKey(self, dict: dict) -> None:
