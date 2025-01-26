@@ -21,7 +21,12 @@ pip install casambi-bt
 
 Have a look at `demo.py` for a small example.
 
-Please note this won't work on Mac OSX since it doesn't expose Bluetooth Mac addresses, which are needed to communicate with the Casambi APIs. Instead, try it on a Raspberry Pi!
+### MacOS
+
+MacOS [does not expose the Bluetooth MAC address via their official API](https://github.com/hbldh/bleak/issues/140),
+if you're running this library on MacOS, it will use an undocumented IOBluetooth API to get the MAC Address.
+Without the real MAC address the integration with Casambi will not work.
+If you're running into problems fetching the MAC address on MacOS, try it on a Raspberry Pi.
 
 ### Casambi network setup
 
