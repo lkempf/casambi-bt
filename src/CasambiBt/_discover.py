@@ -1,4 +1,5 @@
 import logging
+import platform
 
 from bleak import BleakScanner
 from bleak.backends.client import BLEDevice
@@ -19,7 +20,16 @@ async def discover() -> list[BLEDevice]:
 
     # Discover all devices in range
     try:
-        devices_and_advertisements = await BleakScanner.discover(return_adv=True)
+        if platform.system() == "Darwin":
+            _LOGGER.debug(
+                "MacOS operation system detected, using undocumented IOBluetooth API to fetch MAC Address."
+            )
+            # https://bleak.readthedocs.io/en/latest/backends/macos.html#bleak.backends.corebluetooth.scanner.CBScannerArgs.use_bdaddr
+            devices_and_advertisements = await BleakScanner.discover(
+                return_adv=True, cb={"use_bdaddr": True}
+            )
+        else:
+            devices_and_advertisements = await BleakScanner.discover(return_adv=True)
     except BleakDBusError as e:
         raise BluetoothError(e.dbus_error, e.dbus_error_details) from e
     except BleakError as e:
@@ -30,7 +40,7 @@ async def discover() -> list[BLEDevice]:
     for _, (d, advertisement) in devices_and_advertisements.items():
         if 963 in advertisement.manufacturer_data:
             if CASA_UUID in advertisement.service_uuids:
-                _LOGGER.debug(f"Discovered networt at {d.address}")
+                _LOGGER.debug(f"Discovered network at {d.address}")
                 discovered.append(d)
 
     return discovered
