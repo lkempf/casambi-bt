@@ -5,4 +5,13 @@
 
 from ._casambi import Casambi
 from ._discover import discover
-from ._unit import ColorSource, Group, Scene, Unit, UnitControlType, UnitState
+from ._unit import (
+    ColorSource,
+    Group,
+    Scene,
+    Unit,
+    UnitControl,
+    UnitControlType,
+    UnitState,
+    UnitType,
+)
