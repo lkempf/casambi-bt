@@ -35,3 +35,11 @@ If you have problems connecting to the network please check that your network is
 ![Gateway settings](/doc/img/gateway.png)
 ![Network settings](/doc/img/network.png)
 ![Performance settings](/doc/img/perf.png)
+
+### Working Luminaires
+
+The implementation has been tested with the following luminaires:
+
+| OEM   | Fixture Model  | Firmware Version | Controls | Limitations |
+| ----- | -------------- | ---------------- | -------- | ------ |
+| OLIGO | CURVED         | `Evolution/37.0` | `Fixture Mode: PWM/4ch/Dim,Dim,TW`| - Luminaire has two *elements* (up- and downlight) which can only be controlled simultaniously <br>- tunable white cannot be controlled |
