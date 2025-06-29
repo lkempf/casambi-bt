@@ -24,6 +24,8 @@ from ._constants import CASA_AUTH_CHAR_UUID, ConnectionState
 from ._encryption import Encryptor
 from ._network import Network
 
+from ._switch_event import parse_switch_event
+
 # We need to move these imports here to prevent a cycle.
 from .errors import (  # noqa: E402
     BluetoothError,
@@ -37,6 +39,7 @@ from .errors import (  # noqa: E402
 @unique
 class IncommingPacketType(IntEnum):
     UnitState = 6
+    SwitchEvent = 7
     NetworkConfig = 9
 
 
@@ -426,6 +429,8 @@ class CasambiClient:
 
         if packetType == IncommingPacketType.UnitState:
             self._parseUnitStates(data[1:])
+        elif packetType == IncommingPacketType.SwitchEvent:
+            parse_switch_event(data[1:], self._dataCallback)
         elif packetType == IncommingPacketType.NetworkConfig:
             # We don't care about the config the network thinks it has.
             # We assume that cloud config and local config match.
