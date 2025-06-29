@@ -24,8 +24,6 @@ from ._constants import CASA_AUTH_CHAR_UUID, ConnectionState
 from ._encryption import Encryptor
 from ._network import Network
 
-from ._switch_event import parse_switch_event
-
 # We need to move these imports here to prevent a cycle.
 from .errors import (  # noqa: E402
     BluetoothError,
@@ -430,7 +428,7 @@ class CasambiClient:
         if packetType == IncommingPacketType.UnitState:
             self._parseUnitStates(data[1:])
         elif packetType == IncommingPacketType.SwitchEvent:
-            parse_switch_event(data[1:], self._dataCallback)
+            self._parseSwitchEvent(data[1:])
         elif packetType == IncommingPacketType.NetworkConfig:
             # We don't care about the config the network thinks it has.
             # We assume that cloud config and local config match.
@@ -483,6 +481,80 @@ class CasambiClient:
             self._logger.error(
                 f"Ran out of data while parsing unit state! Remaining data {b2a(data[oldPos:])} in {b2a(data)}."
             )
+
+    def _parseSwitchEvent(self, data: bytes) -> None:
+        self._logger.info(f"Parsing incoming switch event... Data: {b2a(data)}")
+
+        pos = 0
+        try:
+            # A switch event needs at least 3 bytes for a header
+            if len(data) < 3:
+                self._logger.warning(f"Incomplete switch event data: {b2a(data)}")
+                self._dataCallback(IncommingPacketType.SwitchEvent, {"data": data})
+                return
+
+            sensor_type = data[pos]
+            flags = data[pos + 1]
+            length = ((data[pos + 2] >> 4) & 15) + 1
+            source_id = data[pos + 2] & 15
+            pos += 3
+
+            if len(data) - pos < length:
+                self._logger.error(
+                    "Inconsistent length for switch event. "
+                    f"Declared: {length}, available: {len(data) - pos}. "
+                    f"Data: {b2a(data)}"
+                )
+                self._dataCallback(IncommingPacketType.SwitchEvent, {"data": data})
+                return
+
+            value_payload = data[pos : pos + length]
+            pos += length
+
+            if not value_payload:
+                self._logger.error(f"Switch event has zero length value. Data: {b2a(data)}")
+                self._dataCallback(IncommingPacketType.SwitchEvent, {"data": data})
+                return
+
+            # The button number seems to be encoded in the source_id.
+            button = source_id
+
+            unit_id = value_payload[0]
+            action = value_payload[1]
+            actual_value = value_payload[2:]
+
+            # The second bit of the action byte seems to indicate press (0) or release (1)
+            is_release = (action >> 1) & 1
+            event_string = "button_release" if is_release else "button_press"
+
+            self._logger.info(
+                f"Parsed switch event: sensor_type={sensor_type}, flags={flags:#04x}, "
+                f"length={length}, button={button}, unit_id={unit_id}, "
+                f"action={action:#04x} ({event_string}), value={b2a(actual_value)}"
+            )
+
+            self._dataCallback(
+                IncommingPacketType.SwitchEvent,
+                {
+                    "sensor_type": sensor_type,
+                    "flags": flags,
+                    "length": length,
+                    "button": button,
+                    "unit_id": unit_id,
+                    "action": action,
+                    "event": event_string,
+                    "value": actual_value,
+                },
+            )
+            
+
+            remaining_data = data[pos:]
+            if remaining_data:
+                self._logger.info(f"Remaining data in switch event packet: {b2a(remaining_data)}")
+
+        except Exception:
+            self._logger.error(f"Error parsing switch event! Data: {b2a(data)}", exc_info=True)
+            self._dataCallback(IncommingPacketType.SwitchEvent, {"data": data})
 
     async def disconnect(self) -> None:
         self._logger.info("Disconnecting...")
