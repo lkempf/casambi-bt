@@ -46,15 +46,21 @@ def parse_switch_event(
             data_callback(IncommingPacketType.SwitchEvent, {"data": data})
             return
 
-        unit_id = value_payload[0]
-        actual_value = value_payload[1:]
-
         # The button number seems to be encoded in the source_id.
         button = source_id
 
+        unit_id = value_payload[0]
+        action = value_payload[1]
+        actual_value = value_payload[2:]
+
+        # The second bit of the action byte seems to indicate press (0) or release (1)
+        is_release = (action >> 1) & 1
+        event_string = "button_release" if is_release else "button_press"
+
         logger.info(
             f"Parsed switch event: sensor_type={sensor_type}, flags={flags:#04x}, "
-            f"length={length}, source_id={source_id}, button={button}, unit_id={unit_id}, value={b2a(actual_value)}"
+            f"length={length}, button={button}, unit_id={unit_id}, "
+            f"action={action:#04x} ({event_string}), value={b2a(actual_value)}"
         )
 
         data_callback(
@@ -63,9 +69,10 @@ def parse_switch_event(
                 "sensor_type": sensor_type,
                 "flags": flags,
                 "length": length,
-                "source_id": source_id,
                 "button": button,
                 "unit_id": unit_id,
+                "action": action,
+                "event": event_string,
                 "value": actual_value,
             },
         )
