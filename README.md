@@ -9,7 +9,7 @@ This is an enhanced fork of the original [casambi-bt](https://github.com/lkempf/
 - **Improved relay status handling** - Better support for relay units
 - **Bug fixes and improvements** - Various fixes based on real-world usage
 
-This library provides a bluetooth interface to Casambi-based lights. It is not associated with Casambi and is based on reverse engineering of the protocol.
+This library provides a bluetooth interface to Casambi-based lights. It is not associated with Casambi.
 
 For Home Assistant integration using this library, see [casambi-bt-hass](https://github.com/rankjie/casambi-bt-hass).
 
