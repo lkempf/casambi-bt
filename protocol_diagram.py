@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+"""
+Generate a protocol diagram for Casambi switch events
+"""
+
+def create_protocol_diagram():
+    diagram = """
+CASAMBI SWITCH EVENT PROTOCOL STRUCTURE
+================================================================================
+
+BLE PACKET (after decryption)
+┌─────────────┬──────────────────────────────────────────────────────────────┐
+│ Packet Type │                    Packet Data                               │
+│   (1 byte)  │                  (variable length)                           │
+├─────────────┼──────────────────────────────────────────────────────────────┤
+│    0x07     │  Message 1  │  Message 2  │  Message 3  │ ... │ Message N │
+│(Switch Event)│             │             │             │     │           │
+└─────────────┴──────────────────────────────────────────────────────────────┘
+
+MESSAGE STRUCTURE (each message in packet)
+┌──────────────┬──────────┬─────────────────────┬──────────────────────────────┐
+│ Message Type │  Flags   │  Length | Parameter │        Payload               │
+│   (1 byte)   │ (1 byte) │      (1 byte)       │    (variable length)         │
+├──────────────┼──────────┼──────┬──────────────┼──────────────────────────────┤
+│     0xXX     │   0xXX   │ L-1  │      P       │    Based on length (L)       │
+│              │          │ 4bits│    4 bits    │                              │
+└──────────────┴──────────┴──────┴──────────────┴──────────────────────────────┘
+
+TYPE 0x08 - SWITCH EVENT (e.g., unit 31)
+┌──────────────┬──────────┬─────────────────────┬──────────────────────────────┐
+│     0x08     │  Flags   │  0x20 (L=3, P=0)    │   Unit │ Action │  Extra    │
+│              │  (0x03)  │  Button = P = 0     │   ID   │  Byte  │  Data     │
+├──────────────┼──────────┼─────────────────────┼────────┼────────┼───────────┤
+│              │          │                     │  0x1F  │  0x85  │   0x1F    │
+│              │          │                     │        │10000101│           │
+│              │          │                     │        │    ↑   │           │
+│              │          │                     │        │ bit 1=0│           │
+│              │          │                     │        │ (press)│           │
+└──────────────┴──────────┴─────────────────────┴────────┴────────┴───────────┘
+
+TYPE 0x10 - EXTENDED SWITCH EVENT (e.g., unit 20)
+┌──────────────┬──────────┬─────────────────────┬──────────────────────────────┬─────────────────┐
+│     0x10     │  Flags   │  0x41 (L=5, P=1)    │  Unit │Action│ Fixed Data   │ Additional Data │
+│              │  (0x02)  │  Button = P = 1     │  ID   │Counter│              │  (3 bytes)      │
+├──────────────┼──────────┼─────────────────────┼───────┼──────┼──────────────┼─────────────────┤
+│              │          │                     │ 0x14  │ 0x6D │ 0x14 12 00   │ Seq│State│Btn  │
+│              │          │                     │       │      │              │ 0x08│0x01│0x01 │
+│              │          │                     │       │      │              │     │PRESS│     │
+└──────────────┴──────────┴─────────────────────┴───────┴──────┴──────────────┴─────┴────┴─────┘
+
+PRESS/RELEASE DETECTION
+================================================================================
+
+Type 0x08 (Bit-based):
+  Action: 0x85 = 10000101  →  bit 1 = 0  →  PRESS
+  Action: 0x8A = 10001010  →  bit 1 = 1  →  RELEASE
+
+Type 0x10 (State byte):
+  State: 0x01  →  PRESS
+  State: 0x02  →  RELEASE
+  (Action byte is just a counter: 0x6D → 0x6E → 0x6F → ...)
+
+TYPICAL EVENT SEQUENCES
+================================================================================
+
+Button Press → Release:
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   PRESS EVENT   │     │  RELEASE EVENT  │     │  RELEASE EVENT  │
+│   (1 packet)    │ --> │   (1 packet)    │ --> │   (duplicate)   │
+│ Action: n       │     │ Action: n+1     │     │ Action: n+1     │
+│ State: 0x01     │     │ State: 0x02     │     │ State: 0x02     │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+
+OTHER MESSAGE TYPES IN SWITCH EVENT PACKETS
+================================================================================
+
+Type 0x29 - Unit Update     Type 0x06 - Status        Type 0x00/0x02
+┌────────┬────────────┐     ┌────────┬────────────┐   ┌────────┬────────────┐
+│  0x29  │Unit ID│Val │     │  0x06  │Status/Seq  │   │ 0x00/02│Status Data │
+└────────┴───────┴────┘     └────────┴────────────┘   └────────┴────────────┘
+"""
+    return diagram
+
+if __name__ == "__main__":
+    print(create_protocol_diagram())
+    
+    # Save to file
+    with open("PROTOCOL_DIAGRAM.txt", "w") as f:
+        f.write(create_protocol_diagram())

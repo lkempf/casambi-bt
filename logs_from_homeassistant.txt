@@ -1,0 +1,60 @@
+Logs when press then release button 0 on unit 20:
+
+2025-06-30 16:56:16.048 INFO (MainThread) [CasambiBt._encryption] Decrypting packet: b'4600008014cb31ae32c95909e4c192be5149b166b4c399cfb0c093b3c08d173d' of len 32 with nonce b'460000803e4d047d297ca431f9bcc130'
+2025-06-30 16:56:16.048 INFO (MainThread) [CasambiBt._client] Parsing incoming switch event... Data: b'1002401459141200090100'
+2025-06-30 16:56:16.048 INFO (MainThread) [CasambiBt._client] Parsed switch event: sensor_type=16, flags=0x02, length=5, button=0, unit_id=20, action=0x59 (button_press), value=b'141200'
+2025-06-30 16:56:16.049 INFO (MainThread) [CasambiBt._casambi] Incomming data callback of type 7
+2025-06-30 16:56:16.049 WARNING (MainThread) [CasambiBt._casambi] Handler for type 7 not implemented!
+2025-06-30 16:56:16.049 INFO (MainThread) [CasambiBt._client] Remaining data in switch event packet: b'090100'
+2025-06-30 16:56:16.053 INFO (MainThread) [CasambiBt._encryption] Decrypting packet: b'470000806a1d58b11c0481d5bed6587d4a14dfe4a5c2ffaee1729fcf659ab29d' of len 32 with nonce b'470000803e4d047d297ca431f9bcc130'
+2025-06-30 16:56:16.053 INFO (MainThread) [CasambiBt._client] Parsing incoming switch event... Data: b'1002401459141200090100'
+2025-06-30 16:56:16.053 INFO (MainThread) [CasambiBt._client] Parsed switch event: sensor_type=16, flags=0x02, length=5, button=0, unit_id=20, action=0x59 (button_press), value=b'141200'
+2025-06-30 16:56:16.053 INFO (MainThread) [CasambiBt._casambi] Incomming data callback of type 7
+2025-06-30 16:56:16.053 WARNING (MainThread) [CasambiBt._casambi] Handler for type 7 not implemented!
+2025-06-30 16:56:16.054 INFO (MainThread) [CasambiBt._client] Remaining data in switch event packet: b'090100'
+2025-06-30 16:56:16.124 INFO (MainThread) [CasambiBt._encryption] Decrypting packet: b'4800008008ff8e5e0173a3de58864703712231ad10eb41930c9f6891adf926bb' of len 32 with nonce b'480000803e4d047d297ca431f9bcc130'
+2025-06-30 16:56:16.125 INFO (MainThread) [CasambiBt._client] Parsing incoming switch event... Data: b'100240145a1412000a0200'
+2025-06-30 16:56:16.125 INFO (MainThread) [CasambiBt._client] Parsed switch event: sensor_type=16, flags=0x02, length=5, button=0, unit_id=20, action=0x5a (button_release), value=b'141200'
+2025-06-30 16:56:16.125 INFO (MainThread) [CasambiBt._casambi] Incomming data callback of type 7
+2025-06-30 16:56:16.125 WARNING (MainThread) [CasambiBt._casambi] Handler for type 7 not implemented!
+2025-06-30 16:56:16.125 INFO (MainThread) [CasambiBt._client] Remaining data in switch event packet: b'0a0200'
+2025-06-30 16:56:16.161 INFO (MainThread) [CasambiBt._encryption] Decrypting packet: b'4900008078f0c4653b46741ba7ee7a248442d55044d78c2984cbe386f9cfc242' of len 32 with nonce b'490000803e4d047d297ca431f9bcc130'
+2025-06-30 16:56:16.162 INFO (MainThread) [CasambiBt._client] Parsing incoming switch event... Data: b'100240145a1412000d0200'
+2025-06-30 16:56:16.162 INFO (MainThread) [CasambiBt._client] Parsed switch event: sensor_type=16, flags=0x02, length=5, button=0, unit_id=20, action=0x5a (button_release), value=b'141200'
+2025-06-30 16:56:16.162 INFO (MainThread) [CasambiBt._casambi] Incomming data callback of type 7
+2025-06-30 16:56:16.162 WARNING (MainThread) [CasambiBt._casambi] Handler for type 7 not implemented!
+2025-06-30 16:56:16.162 INFO (MainThread) [CasambiBt._client] Remaining data in switch event packet: b'0d0200'
+2025-06-30 16:56:16.424 INFO (MainThread) [CasambiBt._encryption] Decrypting packet: b'4a000080a46a81ca1f4b69a3c890da7989fcfa6e092ec09dc387753d3a08396e' of len 32 with nonce b'4a0000803e4d047d297ca431f9bcc130'
+2025-06-30 16:56:16.425 INFO (MainThread) [CasambiBt._client] Parsing incoming switch event... Data: b'100240145a141200260200'
+2025-06-30 16:56:16.425 INFO (MainThread) [CasambiBt._client] Parsed switch event: sensor_type=16, flags=0x02, length=5, button=0, unit_id=20, action=0x5a (button_release), value=b'141200'
+2025-06-30 16:56:16.425 INFO (MainThread) [CasambiBt._casambi] Incomming data callback of type 7
+2025-06-30 16:56:16.425 WARNING (MainThread) [CasambiBt._casambi] Handler for type 7 not implemented!
+2025-06-30 16:56:16.425 INFO (MainThread) [CasambiBt._client] Remaining data in switch event packet: b'260200'
+
+
+Logs when press then release button 1 on unit 20:
+
+2025-06-30 16:58:45.825 INFO (MainThread) [CasambiBt._encryption] Decrypting packet: b'50000080cda32f4d160a6fa6265fc22c53e8df93b3f145c9672a3322ec2d7c0d' of len 32 with nonce b'500000803e4d047d297ca431f9bcc130'
+2025-06-30 16:58:45.826 INFO (MainThread) [CasambiBt._client] Parsing incoming switch event... Data: b'100241145e141200090101'
+2025-06-30 16:58:45.826 INFO (MainThread) [CasambiBt._client] Parsed switch event: sensor_type=16, flags=0x02, length=5, button=1, unit_id=20, action=0x5e (button_release), value=b'141200'
+2025-06-30 16:58:45.826 INFO (MainThread) [CasambiBt._casambi] Incomming data callback of type 7
+2025-06-30 16:58:45.826 WARNING (MainThread) [CasambiBt._casambi] Handler for type 7 not implemented!
+2025-06-30 16:58:45.826 INFO (MainThread) [CasambiBt._client] Remaining data in switch event packet: b'090101'
+2025-06-30 16:58:45.862 INFO (MainThread) [CasambiBt._encryption] Decrypting packet: b'51000080a376c7769f232e7be291cf7d1437ed58bfd68ba699cd51e4ec982fad' of len 32 with nonce b'510000803e4d047d297ca431f9bcc130'
+2025-06-30 16:58:45.863 INFO (MainThread) [CasambiBt._client] Parsing incoming switch event... Data: b'100241145e1412000c0101'
+2025-06-30 16:58:45.863 INFO (MainThread) [CasambiBt._client] Parsed switch event: sensor_type=16, flags=0x02, length=5, button=1, unit_id=20, action=0x5e (button_release), value=b'141200'
+2025-06-30 16:58:45.863 INFO (MainThread) [CasambiBt._casambi] Incomming data callback of type 7
+2025-06-30 16:58:45.863 WARNING (MainThread) [CasambiBt._casambi] Handler for type 7 not implemented!
+2025-06-30 16:58:45.863 INFO (MainThread) [CasambiBt._client] Remaining data in switch event packet: b'0c0101'
+2025-06-30 16:58:45.976 INFO (MainThread) [CasambiBt._encryption] Decrypting packet: b'52000080831ef8ff7a2c5dc28894add0b2bd9f0fa72c791c8777cb918760d7d8' of len 32 with nonce b'520000803e4d047d297ca431f9bcc130'
+2025-06-30 16:58:45.977 INFO (MainThread) [CasambiBt._client] Parsing incoming switch event... Data: b'100241145f141200090201'
+2025-06-30 16:58:45.977 INFO (MainThread) [CasambiBt._client] Parsed switch event: sensor_type=16, flags=0x02, length=5, button=1, unit_id=20, action=0x5f (button_release), value=b'141200'
+2025-06-30 16:58:45.977 INFO (MainThread) [CasambiBt._casambi] Incomming data callback of type 7
+2025-06-30 16:58:45.977 WARNING (MainThread) [CasambiBt._casambi] Handler for type 7 not implemented!
+2025-06-30 16:58:45.977 INFO (MainThread) [CasambiBt._client] Remaining data in switch event packet: b'090201'
+2025-06-30 16:58:46.724 INFO (MainThread) [CasambiBt._encryption] Decrypting packet: b'530000808686754deed892c366ab40b647d3609233126335a4e5ce22da6e9f53' of len 32 with nonce b'530000803e4d047d297ca431f9bcc130'
+2025-06-30 16:58:46.724 INFO (MainThread) [CasambiBt._client] Parsing incoming switch event... Data: b'100241145f141200500201'
+2025-06-30 16:58:46.724 INFO (MainThread) [CasambiBt._client] Parsed switch event: sensor_type=16, flags=0x02, length=5, button=1, unit_id=20, action=0x5f (button_release), value=b'141200'
+2025-06-30 16:58:46.724 INFO (MainThread) [CasambiBt._casambi] Incomming data callback of type 7
+2025-06-30 16:58:46.724 WARNING (MainThread) [CasambiBt._casambi] Handler for type 7 not implemented!
+2025-06-30 16:58:46.724 INFO (MainThread) [CasambiBt._client] Remaining data in switch event packet: b'500201'
