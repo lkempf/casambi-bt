@@ -483,78 +483,110 @@ class CasambiClient:
             )
 
     def _parseSwitchEvent(self, data: bytes) -> None:
-        self._logger.info(f"Parsing incoming switch event... Data: {b2a(data)}")
+        """Parse switch event packet which contains multiple message types"""
+        self._logger.info(f"Parsing incoming switch event packet... Data: {b2a(data)}")
 
         pos = 0
+        oldPos = 0
         try:
-            # A switch event needs at least 3 bytes for a header
-            if len(data) < 3:
-                self._logger.warning(f"Incomplete switch event data: {b2a(data)}")
-                self._dataCallback(IncommingPacketType.SwitchEvent, {"data": data})
-                return
+            while pos <= len(data) - 3:
+                oldPos = pos
+                
+                # Parse message header
+                message_type = data[pos]
+                flags = data[pos + 1]
+                length = ((data[pos + 2] >> 4) & 15) + 1
+                parameter = data[pos + 2] & 15
+                pos += 3
 
-            sensor_type = data[pos]
-            flags = data[pos + 1]
-            length = ((data[pos + 2] >> 4) & 15) + 1
-            source_id = data[pos + 2] & 15
-            pos += 3
+                # Check if we have enough data for the payload
+                if pos + length > len(data):
+                    self._logger.debug(
+                        f"Incomplete message at position {oldPos}. "
+                        f"Type: 0x{message_type:02x}, declared length: {length}, available: {len(data) - pos}"
+                    )
+                    break
 
-            if len(data) - pos < length:
-                self._logger.error(
-                    "Inconsistent length for switch event. "
-                    f"Declared: {length}, available: {len(data) - pos}. "
-                    f"Data: {b2a(data)}"
-                )
-                self._dataCallback(IncommingPacketType.SwitchEvent, {"data": data})
-                return
+                # Extract the payload
+                payload = data[pos : pos + length]
+                pos += length
 
-            value_payload = data[pos : pos + length]
-            pos += length
+                # Process based on message type
+                if message_type == 0x08 or message_type == 0x10:  # Switch/button events
+                    self._processSwitchMessage(message_type, flags, parameter, payload, data, oldPos)
+                else:
+                    # Log other message types for now
+                    self._logger.debug(
+                        f"Message type 0x{message_type:02x}: flags=0x{flags:02x}, "
+                        f"param={parameter}, payload={b2a(payload)}"
+                    )
 
-            if not value_payload:
-                self._logger.error(f"Switch event has zero length value. Data: {b2a(data)}")
-                self._dataCallback(IncommingPacketType.SwitchEvent, {"data": data})
-                return
+                oldPos = pos
 
-            # The button number seems to be encoded in the source_id.
-            button = source_id
-
-            unit_id = value_payload[0]
-            action = value_payload[1]
-            actual_value = value_payload[2:]
-
-            # The second bit of the action byte seems to indicate press (0) or release (1)
-            is_release = (action >> 1) & 1
-            event_string = "button_release" if is_release else "button_press"
-
-            self._logger.info(
-                f"Parsed switch event: sensor_type={sensor_type}, flags={flags:#04x}, "
-                f"length={length}, button={button}, unit_id={unit_id}, "
-                f"action={action:#04x} ({event_string}), value={b2a(actual_value)}"
+        except IndexError:
+            self._logger.error(
+                f"Ran out of data while parsing switch event packet! "
+                f"Remaining data {b2a(data[oldPos:])} in {b2a(data)}."
             )
 
-            self._dataCallback(
-                IncommingPacketType.SwitchEvent,
-                {
-                    "sensor_type": sensor_type,
-                    "flags": flags,
-                    "length": length,
-                    "button": button,
-                    "unit_id": unit_id,
-                    "action": action,
-                    "event": event_string,
-                    "value": actual_value,
-                },
-            )
-            
+    def _processSwitchMessage(self, message_type: int, flags: int, button: int, payload: bytes, full_data: bytes, start_pos: int) -> None:
+        """Process a switch/button message (types 0x08 or 0x10)"""
+        if not payload:
+            self._logger.error("Switch message has empty payload")
+            return
 
-            remaining_data = data[pos:]
-            if remaining_data:
-                self._logger.info(f"Remaining data in switch event packet: {b2a(remaining_data)}")
+        unit_id = payload[0]
 
-        except Exception:
-            self._logger.error(f"Error parsing switch event! Data: {b2a(data)}", exc_info=True)
-            self._dataCallback(IncommingPacketType.SwitchEvent, {"data": data})
+        action = None
+        if len(payload) > 1:
+            action = payload[1]
+
+        extra_data = b''
+        if len(payload) > 2:
+            extra_data = payload[2:]
+
+        event_string = "unknown"
+        
+        # Different interpretation based on message type
+        if message_type == 0x08:
+            # Type 0x08: Use bit 1 of action for press/release
+            if action is not None:
+                is_release = (action >> 1) & 1
+                event_string = "button_release" if is_release else "button_press"
+        elif message_type == 0x10:
+            # Type 0x10: Must check the additional state byte after the message
+            # The action value is a counter that increments with each state change
+            additional_data_pos = start_pos + 3 + len(payload)
+            if additional_data_pos + 2 < len(full_data):
+                state_byte = full_data[additional_data_pos + 1]
+                if state_byte == 0x01:
+                    event_string = "button_press"
+                elif state_byte == 0x02:
+                    event_string = "button_release"
+                else:
+                    self._logger.warning(f"Unknown state byte: 0x{state_byte:02x}")
+            else:
+                self._logger.warning("Type 0x10 message missing state byte information")
+
+        action_display = f"{action:#04x}" if action is not None else "N/A"
+
+        self._logger.info(
+            f"Switch event (type 0x{message_type:02x}): button={button}, unit_id={unit_id}, "
+            f"action={action_display} ({event_string}), flags=0x{flags:02x}"
+        )
+
+        self._dataCallback(
+            IncommingPacketType.SwitchEvent,
+            {
+                "message_type": message_type,
+                "button": button,
+                "unit_id": unit_id,
+                "action": action,
+                "event": event_string,
+                "flags": flags,
+                "extra_data": extra_data,
+            },
+        )
 
     async def disconnect(self) -> None:
         self._logger.info("Disconnecting...")
