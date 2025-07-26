@@ -414,6 +414,9 @@ class CasambiClient:
     ) -> None:
         # TODO: Check incoming counter and direction flag
         self._inPacketCount += 1
+        
+        # Store raw encrypted packet for reference
+        raw_packet = data[:]
 
         try:
             data = self._encryptor.decryptAndVerify(data, data[:4] + self._nonce[4:])
@@ -428,7 +431,7 @@ class CasambiClient:
         if packetType == IncommingPacketType.UnitState:
             self._parseUnitStates(data[1:])
         elif packetType == IncommingPacketType.SwitchEvent:
-            self._parseSwitchEvent(data[1:])
+            self._parseSwitchEvent(data[1:], self._inPacketCount, raw_packet)
         elif packetType == IncommingPacketType.NetworkConfig:
             # We don't care about the config the network thinks it has.
             # We assume that cloud config and local config match.
@@ -482,7 +485,7 @@ class CasambiClient:
                 f"Ran out of data while parsing unit state! Remaining data {b2a(data[oldPos:])} in {b2a(data)}."
             )
 
-    def _parseSwitchEvent(self, data: bytes) -> None:
+    def _parseSwitchEvent(self, data: bytes, packet_seq: int = None, raw_packet: bytes = None) -> None:
         """Parse switch event packet which contains multiple message types"""
         self._logger.info(f"Parsing incoming switch event packet... Data: {b2a(data)}")
 
@@ -513,7 +516,7 @@ class CasambiClient:
 
                 # Process based on message type
                 if message_type == 0x08 or message_type == 0x10:  # Switch/button events
-                    self._processSwitchMessage(message_type, flags, parameter, payload, data, oldPos)
+                    self._processSwitchMessage(message_type, flags, parameter, payload, data, oldPos, packet_seq, raw_packet)
                 else:
                     # Log other message types for now
                     self._logger.debug(
@@ -529,7 +532,7 @@ class CasambiClient:
                 f"Remaining data {b2a(data[oldPos:])} in {b2a(data)}."
             )
 
-    def _processSwitchMessage(self, message_type: int, flags: int, button: int, payload: bytes, full_data: bytes, start_pos: int) -> None:
+    def _processSwitchMessage(self, message_type: int, flags: int, button: int, payload: bytes, full_data: bytes, start_pos: int, packet_seq: int = None, raw_packet: bytes = None) -> None:
         """Process a switch/button message (types 0x08 or 0x10)"""
         if not payload:
             self._logger.error("Switch message has empty payload")
@@ -585,6 +588,11 @@ class CasambiClient:
                 "event": event_string,
                 "flags": flags,
                 "extra_data": extra_data,
+                "packet_sequence": packet_seq,
+                "raw_packet": b2a(raw_packet) if raw_packet else None,
+                "decrypted_data": b2a(full_data),
+                "message_position": start_pos,
+                "payload_hex": b2a(payload),
             },
         )
 
