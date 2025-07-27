@@ -423,7 +423,7 @@ class Casambi:
                 f"Handling switch event: unit_id={data.get('unit_id')}, "
                 f"button={data.get('button')}, event={data.get('event')}"
             )
-            
+
             # Notify listeners
             for h in self._switchEventCallbacks:
                 try:
@@ -457,7 +457,9 @@ class Casambi:
         self._unitChangedCallbacks.remove(handler)
         self._logger.debug(f"Removed unit changed handler {handler}")
 
-    def registerSwitchEventHandler(self, handler: Callable[[dict[str, Any]], None]) -> None:
+    def registerSwitchEventHandler(
+        self, handler: Callable[[dict[str, Any]], None]
+    ) -> None:
         """Register a new handler for switch events.
 
         This handler is called whenever a switch event is received.
@@ -474,7 +476,9 @@ class Casambi:
         self._switchEventCallbacks.append(handler)
         self._logger.debug(f"Registered switch event handler {handler}")
 
-    def unregisterSwitchEventHandler(self, handler: Callable[[dict[str, Any]], None]) -> None:
+    def unregisterSwitchEventHandler(
+        self, handler: Callable[[dict[str, Any]], None]
+    ) -> None:
         """Unregister an existing switch event handler.
 
         :param handler: The handler to unregister.
