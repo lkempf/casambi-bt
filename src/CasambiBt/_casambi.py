@@ -425,12 +425,12 @@ class Casambi:
             )
 
             # Notify listeners
-            for h in self._switchEventCallbacks:
+            for switch_handler in self._switchEventCallbacks:
                 try:
-                    h(data)
+                    switch_handler(data)
                 except Exception:
                     self._logger.error(
-                        f"Exception occurred in switchEventCallback {h}.",
+                        f"Exception occurred in switchEventCallback {switch_handler}.",
                         exc_info=True,
                     )
         else:
