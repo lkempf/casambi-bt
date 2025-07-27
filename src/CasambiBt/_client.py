@@ -566,6 +566,10 @@ class CasambiClient:
                     event_string = "button_press"
                 elif state_byte == 0x02:
                     event_string = "button_release"
+                elif state_byte == 0x09:
+                    event_string = "button_hold"
+                elif state_byte == 0x0c:
+                    event_string = "button_release_after_hold"
                 else:
                     self._logger.warning(f"Unknown state byte: 0x{state_byte:02x}")
             else:
