@@ -1,22 +1,24 @@
-![PyPI](https://img.shields.io/pypi/v/casambi-bt)
+![PyPI](https://img.shields.io/pypi/v/casambi-bt-revamped)
 [![Discord](https://img.shields.io/discord/1186445089317326888)](https://discord.gg/jgZVugfx)
 
-# A bluetooth based Python library for controlling Casambi networks
+# Casambi Bluetooth Revamped - Enhanced Python library for Casambi networks
 
-This library provides a currently **alpha quality** interface to Casambi-based lights over Bluetooth.
-The author is not associated with Casambi and the implementation is based on his own analysis of the protocol.
-This interface is not feature complete and was only tested with a very small network.
+This is an enhanced fork of the original [casambi-bt](https://github.com/lkempf/casambi-bt) library with additional features:
 
-If you want to check out my (slow) progress in writing a integration for Home Assistant using this library you can take a look at [https://github.com/lkempf/casambi-bt-hass/](https://github.com/lkempf/casambi-bt-hass/).
+- **Switch event support** - Receive button press/release events from Casambi switches
+- **Improved relay status handling** - Better support for relay units
+- **Bug fixes and improvements** - Various fixes based on real-world usage
 
-For a more mature solution using a gateway and the official Casambi API have a look at [https://github.com/hellqvio86/aiocasambi](https://github.com/hellqvio86/aiocasambi).
+This library provides a bluetooth interface to Casambi-based lights. It is not associated with Casambi.
+
+For Home Assistant integration using this library, see [casambi-bt-hass](https://github.com/rankjie/casambi-bt-hass).
 
 ## Getting started
 
 This library is available on PyPi:
 
 ```
-pip install casambi-bt
+pip install casambi-bt-revamped
 ```
 
 Have a look at `demo.py` for a small example.
