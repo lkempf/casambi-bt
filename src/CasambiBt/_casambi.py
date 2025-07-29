@@ -33,6 +33,7 @@ class Casambi:
         self._casaNetwork: Network | None = None
 
         self._unitChangedCallbacks: list[Callable[[Unit], None]] = []
+        self._switchEventCallbacks: list[Callable[[dict[str, Any]], None]] = []
         self._disconnectCallbacks: list[Callable[[], None]] = []
 
         self._logger = logging.getLogger(__name__)
@@ -417,6 +418,21 @@ class Casambi:
                 self._logger.error(
                     f"Changed state notification for unkown unit {data['id']}"
                 )
+        elif packetType == IncommingPacketType.SwitchEvent:
+            self._logger.debug(
+                f"Handling switch event: unit_id={data.get('unit_id')}, "
+                f"button={data.get('button')}, event={data.get('event')}"
+            )
+
+            # Notify listeners
+            for switch_handler in self._switchEventCallbacks:
+                try:
+                    switch_handler(data)
+                except Exception:
+                    self._logger.error(
+                        f"Exception occurred in switchEventCallback {switch_handler}.",
+                        exc_info=True,
+                    )
         else:
             self._logger.warning(f"Handler for type {packetType} not implemented!")
 
@@ -440,6 +456,36 @@ class Casambi:
         """
         self._unitChangedCallbacks.remove(handler)
         self._logger.debug(f"Removed unit changed handler {handler}")
+
+    def registerSwitchEventHandler(
+        self, handler: Callable[[dict[str, Any]], None]
+    ) -> None:
+        """Register a new handler for switch events.
+
+        This handler is called whenever a switch event is received.
+        The handler is supplied with a dictionary containing:
+        - unit_id: The ID of the switch unit
+        - button: The button number that was pressed/released
+        - event: Either "button_press" or "button_release"
+        - message_type: The raw message type (0x08 or 0x10)
+        - flags: Additional flags from the message
+        - extra_data: Any additional data from the message
+
+        :param handler: The method to call when a switch event is received.
+        """
+        self._switchEventCallbacks.append(handler)
+        self._logger.debug(f"Registered switch event handler {handler}")
+
+    def unregisterSwitchEventHandler(
+        self, handler: Callable[[dict[str, Any]], None]
+    ) -> None:
+        """Unregister an existing switch event handler.
+
+        :param handler: The handler to unregister.
+        :raises ValueError: If the handler isn't registered.
+        """
+        self._switchEventCallbacks.remove(handler)
+        self._logger.debug(f"Removed switch event handler {handler}")
 
     def registerDisconnectCallback(self, callback: Callable[[], None]) -> None:
         """Register a disconnect callback.

@@ -21,6 +21,27 @@ pip install casambi-bt
 
 Have a look at `demo.py` for a small example.
 
+### Switch Event Support
+
+This library now supports receiving switch button events:
+
+```python
+from CasambiBt import Casambi
+
+def handle_switch_event(event_data):
+    print(f"Switch event: Unit {event_data['unit_id']}, "
+          f"Button {event_data['button']}, "
+          f"Action: {event_data['event']}")
+
+casa = Casambi()
+# ... connect to network ...
+
+# Register switch event handler
+casa.registerSwitchEventHandler(handle_switch_event)
+
+# Events will be received when buttons are pressed/released
+```
+
 ### MacOS
 
 MacOS [does not expose the Bluetooth MAC address via their official API](https://github.com/hbldh/bleak/issues/140),

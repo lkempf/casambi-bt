@@ -37,6 +37,7 @@ from .errors import (  # noqa: E402
 @unique
 class IncommingPacketType(IntEnum):
     UnitState = 6
+    SwitchEvent = 7
     NetworkConfig = 9
 
 
@@ -414,18 +415,27 @@ class CasambiClient:
         # TODO: Check incoming counter and direction flag
         self._inPacketCount += 1
 
+        # Store raw encrypted packet for reference
+        raw_encrypted_packet = data[:]
+
         try:
-            data = self._encryptor.decryptAndVerify(data, data[:4] + self._nonce[4:])
+            decrypted_data = self._encryptor.decryptAndVerify(
+                data, data[:4] + self._nonce[4:]
+            )
         except InvalidSignature:
             # We only drop packets with invalid signature here instead of going into an error state
             self._logger.error(f"Invalid signature for packet {b2a(data)}!")
             return
 
-        packetType = data[0]
-        self._logger.debug(f"Incoming data of type {packetType}: {b2a(data)}")
+        packetType = decrypted_data[0]
+        self._logger.debug(f"Incoming data of type {packetType}: {b2a(decrypted_data)}")
 
         if packetType == IncommingPacketType.UnitState:
-            self._parseUnitStates(data[1:])
+            self._parseUnitStates(decrypted_data[1:])
+        elif packetType == IncommingPacketType.SwitchEvent:
+            self._parseSwitchEvent(
+                decrypted_data[1:], self._inPacketCount, raw_encrypted_packet
+            )
         elif packetType == IncommingPacketType.NetworkConfig:
             # We don't care about the config the network thinks it has.
             # We assume that cloud config and local config match.
@@ -478,6 +488,237 @@ class CasambiClient:
             self._logger.error(
                 f"Ran out of data while parsing unit state! Remaining data {b2a(data[oldPos:])} in {b2a(data)}."
             )
+
+    def _parseSwitchEvent(
+        self, data: bytes, packet_seq: int = None, raw_packet: bytes = None
+    ) -> None:
+        """Parse switch event packet which contains multiple message types."""
+        self._logger.info(
+            f"Parsing incoming switch event packet #{packet_seq}... Data: {b2a(data)}"
+        )
+
+        # Special handling for message type 0x29 - not a switch event
+        if len(data) >= 1 and data[0] == 0x29:
+            self._logger.debug(
+                f"Ignoring message type 0x29 (not a switch event): {b2a(data)}"
+            )
+            return
+
+        pos = 0
+        oldPos = 0
+        switch_events_found = 0
+
+        try:
+            while pos <= len(data) - 3:
+                oldPos = pos
+
+                # Parse message header
+                message_type = data[pos]
+                flags = data[pos + 1]
+                length = ((data[pos + 2] >> 4) & 15) + 1
+                parameter = data[pos + 2]  # Full byte, not just lower 4 bits
+                pos += 3
+
+                # Sanity check: message type should be reasonable
+                if message_type > 0x80:
+                    self._logger.debug(
+                        f"Skipping invalid message type 0x{message_type:02x} at position {oldPos}"
+                    )
+                    # Try to resync by looking for next valid message
+                    pos = oldPos + 1
+                    continue
+
+                # Check if we have enough data for the payload
+                if pos + length > len(data):
+                    self._logger.debug(
+                        f"Incomplete message at position {oldPos}. "
+                        f"Type: 0x{message_type:02x}, declared length: {length}, available: {len(data) - pos}"
+                    )
+                    break
+
+                # Extract the payload
+                payload = data[pos : pos + length]
+                pos += length
+
+                # Process based on message type
+                if message_type == 0x08 or message_type == 0x10:  # Switch/button events
+                    switch_events_found += 1
+                    # Extract button ID - try both upper and lower nibbles
+                    button_lower = parameter & 0x0F
+                    button_upper = (parameter >> 4) & 0x0F
+
+                    # Use upper 4 bits if lower 4 bits are 0, otherwise use lower 4 bits
+                    if button_lower == 0 and button_upper != 0:
+                        button = button_upper
+                        self._logger.debug(
+                            f"EVO button extraction: parameter=0x{parameter:02x}, using upper nibble, button={button}"
+                        )
+                    else:
+                        button = button_lower
+                        self._logger.debug(
+                            f"EVO button extraction: parameter=0x{parameter:02x}, using lower nibble, button={button}"
+                        )
+
+                    # For type 0x10 messages, we need to pass additional data beyond the declared payload
+                    if message_type == 0x10:
+                        # Extend to include at least 10 bytes from message start for state byte
+                        extended_end = min(oldPos + 11, len(data))
+                        full_message_data = data[oldPos:extended_end]
+                    else:
+                        full_message_data = data
+                    self._processSwitchMessage(
+                        message_type,
+                        flags,
+                        button,
+                        payload,
+                        full_message_data,
+                        oldPos,
+                        packet_seq,
+                        raw_packet,
+                    )
+                elif message_type == 0x29:
+                    # This shouldn't happen due to check above, but just in case
+                    self._logger.debug("Ignoring embedded type 0x29 message")
+                elif message_type in [0x00, 0x06, 0x09, 0x1F, 0x2A]:
+                    # Known non-switch message types - log at debug level
+                    self._logger.debug(
+                        f"Non-switch message type 0x{message_type:02x}: flags=0x{flags:02x}, "
+                        f"param={parameter}, payload={b2a(payload)}"
+                    )
+                else:
+                    # Unknown message types - log at info level
+                    self._logger.info(
+                        f"Unknown message type 0x{message_type:02x}: flags=0x{flags:02x}, "
+                        f"param={parameter}, payload={b2a(payload)}"
+                    )
+
+                oldPos = pos
+
+        except IndexError:
+            self._logger.error(
+                f"Ran out of data while parsing switch event packet! "
+                f"Remaining data {b2a(data[oldPos:])} in {b2a(data)}."
+            )
+
+        if switch_events_found == 0:
+            self._logger.debug(f"No switch events found in packet: {b2a(data)}")
+
+    def _processSwitchMessage(
+        self,
+        message_type: int,
+        flags: int,
+        button: int,
+        payload: bytes,
+        full_data: bytes,
+        start_pos: int,
+        packet_seq: int = None,
+        raw_packet: bytes = None,
+    ) -> None:
+        """Process a switch/button message (types 0x08 or 0x10)."""
+        if not payload:
+            self._logger.error("Switch message has empty payload")
+            return
+
+        # Extract unit_id based on message type
+        if message_type == 0x10 and len(payload) >= 3:
+            # Type 0x10: unit_id is at payload[2]
+            unit_id = payload[2]
+            extra_data = payload[3:] if len(payload) > 3 else b""
+        else:
+            # Standard parsing for other message types
+            unit_id = payload[0]
+            extra_data = b""
+            if len(payload) > 2:
+                extra_data = payload[2:]
+
+        # Extract action based on message type (action SHOULD be different for press vs release)
+        if message_type == 0x10 and len(payload) > 1:
+            # Type 0x10: action is at payload[1]
+            action = payload[1]
+        elif len(payload) > 1:
+            # Other types: action is at payload[1]
+            action = payload[1]
+        else:
+            action = None
+
+        event_string = "unknown"
+
+        # Different interpretation based on message type
+        if message_type == 0x08:
+            # Type 0x08: Use bit 1 of action for press/release
+            if action is not None:
+                is_release = (action >> 1) & 1
+                event_string = "button_release" if is_release else "button_press"
+        elif message_type == 0x10:
+            # Type 0x10: The state byte is at position 9 (0-indexed) from message start
+            # This applies to all units, not just unit 31
+            # full_data for type 0x10 is the message data starting from position 0
+            state_pos = 9
+            if len(full_data) > state_pos:
+                state_byte = full_data[state_pos]
+                if state_byte == 0x01:
+                    event_string = "button_press"
+                elif state_byte == 0x02:
+                    event_string = "button_release"
+                elif state_byte == 0x09:
+                    event_string = "button_hold"
+                elif state_byte == 0x0C:
+                    event_string = "button_release_after_hold"
+                else:
+                    self._logger.debug(
+                        f"Type 0x10: Unknown state byte 0x{state_byte:02x} at message pos {state_pos}"
+                    )
+                    # Fallback: check if extra_data starts with 0x12 (indicates release)
+                    if len(extra_data) >= 1 and extra_data[0] == 0x12:
+                        event_string = "button_release"
+                    else:
+                        event_string = "button_press"
+            else:
+                # Fallback when message is too short
+                if len(extra_data) >= 1 and extra_data[0] == 0x12:
+                    event_string = "button_release"
+                    self._logger.debug(
+                        "Type 0x10: Using extra_data pattern for release detection"
+                    )
+                else:
+                    # Cannot determine state
+                    self._logger.warning(
+                        f"Type 0x10 message missing state info, unit_id={unit_id}, payload={b2a(payload)}"
+                    )
+                    event_string = "unknown"
+
+        action_display = f"{action:#04x}" if action is not None else "N/A"
+
+        self._logger.info(
+            f"Switch event (type 0x{message_type:02x}): button={button}, unit_id={unit_id}, "
+            f"action={action_display} ({event_string}), flags=0x{flags:02x}"
+        )
+
+        # Filter out type 0x08 messages with button=0 (likely notifications)
+        if message_type == 0x08 and button == 0:
+            self._logger.debug(
+                f"Filtering out type 0x08 notification event: button={button}, unit_id={unit_id}, "
+                f"action={action_display}, flags=0x{flags:02x}"
+            )
+            return
+
+        self._dataCallback(
+            IncommingPacketType.SwitchEvent,
+            {
+                "message_type": message_type,
+                "button": button,
+                "unit_id": unit_id,
+                "action": action,
+                "event": event_string,
+                "flags": flags,
+                "extra_data": extra_data,
+                "packet_sequence": packet_seq,
+                "raw_packet": b2a(raw_packet) if raw_packet else None,
+                "decrypted_data": b2a(full_data),
+                "message_position": start_pos,
+                "payload_hex": b2a(payload),
+            },
+        )
 
     async def disconnect(self) -> None:
         self._logger.info("Disconnecting...")
