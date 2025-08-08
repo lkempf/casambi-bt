@@ -111,6 +111,7 @@ class UnitState:
         self._colorsource: ColorSource | None = None
         self._xy: tuple[float, float] | None = None
         self._slider: int | None = None
+        self._onoff: bool | None = None
 
     def _check_range(
         self, value: int | float, min: int | float, max: int | float
@@ -269,8 +270,20 @@ class UnitState:
     def slider(self) -> None:
         self.slider = None
 
+    @property
+    def onoff(self) -> bool | None:
+        return self._onoff
+
+    @onoff.setter
+    def onoff(self, value: bool) -> None:
+        self._onoff = value
+
+    @onoff.deleter
+    def onoff(self) -> None:
+        self._onoff = None
+
     def __repr__(self) -> str:
-        return f"UnitState(dimmer={self.dimmer}, vertical={self._vertical}, rgb={self.rgb.__repr__()}, white={self.white}, temperature={self.temperature}, colorsource={self.colorsource}, xy={self.xy}, slider={self.slider})"
+        return f"UnitState(dimmer={self.dimmer}, vertical={self._vertical}, rgb={self.rgb.__repr__()}, white={self.white}, temperature={self.temperature}, colorsource={self.colorsource}, xy={self.xy}, slider={self.slider}, onoff={self.onoff})"
 
 
 # TODO: Make unit immutable (refactor state, on, online out of it)
@@ -308,6 +321,8 @@ class Unit:
     @property
     def is_on(self) -> bool:
         """Determine whether the unit is turned on."""
+        if self.unitType.get_control(UnitControlType.ONOFF) and self._state:
+            return self._on and self._state.onoff is True
         if self.unitType.get_control(UnitControlType.DIMMER) and self._state:
             return (
                 self._on and self._state.dimmer is not None and self._state.dimmer > 0
@@ -385,6 +400,8 @@ class Unit:
             elif c.type == UnitControlType.SLIDER and state.slider is not None:
                 scale = UnitState.SLIDER_RESOLUTION - c.length
                 scaledValue = state.slider >> scale
+            elif c.type == UnitControlType.ONOFF and state.onoff is not None:
+                scaledValue = 1 if state.onoff else 0
 
             # Use default if unsupported type or unset value in state
             else:
@@ -477,6 +494,8 @@ class Unit:
             elif c.type == UnitControlType.SLIDER:
                 scale = UnitState.SLIDER_RESOLUTION - c.length
                 self._state.slider = cInt << scale
+            elif c.type == UnitControlType.ONOFF:
+                self._state.onoff = cInt != 0
             elif c.type == UnitControlType.UNKOWN:
                 # Might be useful for implementing more state types
                 _LOGGER.debug(
