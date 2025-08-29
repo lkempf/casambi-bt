@@ -1,48 +1,25 @@
-![PyPI](https://img.shields.io/pypi/v/casambi-bt-revamped)
+![PyPI](https://img.shields.io/pypi/v/casambi-bt)
 [![Discord](https://img.shields.io/discord/1186445089317326888)](https://discord.gg/jgZVugfx)
 
-# Casambi Bluetooth Revamped - Enhanced Python library for Casambi networks
+# A bluetooth based Python library for controlling Casambi networks
 
-This is an enhanced fork of the original [casambi-bt](https://github.com/lkempf/casambi-bt) library with additional features:
+This library provides a currently **alpha quality** interface to Casambi-based lights over Bluetooth.
+The author is not associated with Casambi and the implementation is based on his own analysis of the protocol.
+This interface is not feature complete and was only tested with a very small network.
 
-- **Switch event support** - Receive button press/release events from Casambi switches
-- **Improved relay status handling** - Better support for relay units
-- **Bug fixes and improvements** - Various fixes based on real-world usage
+If you want to check out my (slow) progress in writing a integration for Home Assistant using this library you can take a look at [https://github.com/lkempf/casambi-bt-hass/](https://github.com/lkempf/casambi-bt-hass/).
 
-This library provides a bluetooth interface to Casambi-based lights. It is not associated with Casambi.
-
-For Home Assistant integration using this library, see [casambi-bt-hass](https://github.com/rankjie/casambi-bt-hass).
+For a more mature solution using a gateway and the official Casambi API have a look at [https://github.com/hellqvio86/aiocasambi](https://github.com/hellqvio86/aiocasambi).
 
 ## Getting started
 
 This library is available on PyPi:
 
 ```
-pip install casambi-bt-revamped
+pip install casambi-bt
 ```
 
 Have a look at `demo.py` for a small example.
-
-### Switch Event Support
-
-This library now supports receiving switch button events:
-
-```python
-from CasambiBt import Casambi
-
-def handle_switch_event(event_data):
-    print(f"Switch event: Unit {event_data['unit_id']}, "
-          f"Button {event_data['button']}, "
-          f"Action: {event_data['event']}")
-
-casa = Casambi()
-# ... connect to network ...
-
-# Register switch event handler
-casa.registerSwitchEventHandler(handle_switch_event)
-
-# Events will be received when buttons are pressed/released
-```
 
 ### MacOS
 
