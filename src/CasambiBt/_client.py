@@ -2,6 +2,7 @@ import asyncio
 import logging
 import struct
 from binascii import b2a_hex as b2a
+from binascii import hexlify
 from collections.abc import Callable
 from enum import IntEnum, unique
 from hashlib import sha256
@@ -418,6 +419,11 @@ class CasambiClient:
         # Store raw encrypted packet for reference
         raw_encrypted_packet = data[:]
 
+        # Log raw encrypted packet with special marker for easy filtering
+        self._logger.info(
+            f"[CASAMBI_RAW_PACKET] Encrypted #{self._inPacketCount}: {b2a(raw_encrypted_packet)}"
+        )
+
         try:
             decrypted_data = self._encryptor.decryptAndVerify(
                 data, data[:4] + self._nonce[4:]
@@ -429,6 +435,11 @@ class CasambiClient:
 
         packetType = decrypted_data[0]
         self._logger.debug(f"Incoming data of type {packetType}: {b2a(decrypted_data)}")
+
+        # Log decrypted packet with special marker
+        self._logger.info(
+            f"[CASAMBI_DECRYPTED] Type={packetType} #{self._inPacketCount}: {b2a(decrypted_data)}"
+        )
 
         if packetType == IncommingPacketType.UnitState:
             self._parseUnitStates(decrypted_data[1:])
@@ -497,6 +508,11 @@ class CasambiClient:
             f"Parsing incoming switch event packet #{packet_seq}... Data: {b2a(data)}"
         )
 
+        # Log complete packet structure with marker
+        self._logger.info(
+            f"[CASAMBI_SWITCH_PACKET] Full data #{packet_seq}: hex={b2a(data)} len={len(data)}"
+        )
+
         # Special handling for message type 0x29 - not a switch event
         if len(data) >= 1 and data[0] == 0x29:
             self._logger.debug(
@@ -507,6 +523,7 @@ class CasambiClient:
         pos = 0
         oldPos = 0
         switch_events_found = 0
+        all_messages_found = []
 
         try:
             while pos <= len(data) - 3:
@@ -518,6 +535,12 @@ class CasambiClient:
                 length = ((data[pos + 2] >> 4) & 15) + 1
                 parameter = data[pos + 2]  # Full byte, not just lower 4 bits
                 pos += 3
+
+                # Log every message found with detailed structure
+                self._logger.info(
+                    f"[CASAMBI_MSG_FOUND] At pos={oldPos}: type=0x{message_type:02x} flags=0x{flags:02x} "
+                    f"len={length} param=0x{parameter:02x}"
+                )
 
                 # Sanity check: message type should be reasonable
                 if message_type > 0x80:
@@ -540,24 +563,52 @@ class CasambiClient:
                 payload = data[pos : pos + length]
                 pos += length
 
+                # Log the payload
+                self._logger.info(
+                    f"[CASAMBI_MSG_PAYLOAD] Type 0x{message_type:02x} payload: {b2a(payload)} "
+                    f"(bytes {oldPos+3} to {oldPos+3+length-1})"
+                )
+
+                # Track all messages
+                all_messages_found.append(
+                    {
+                        "type": message_type,
+                        "pos": oldPos,
+                        "flags": flags,
+                        "param": parameter,
+                        "payload": b2a(payload),
+                    }
+                )
+
                 # Process based on message type
                 if message_type == 0x08 or message_type == 0x10:  # Switch/button events
                     switch_events_found += 1
-                    # Extract button ID - try both upper and lower nibbles
-                    button_lower = parameter & 0x0F
-                    button_upper = (parameter >> 4) & 0x0F
 
-                    # Use upper 4 bits if lower 4 bits are 0, otherwise use lower 4 bits
-                    if button_lower == 0 and button_upper != 0:
-                        button = button_upper
+                    # Button extraction differs between type 0x08 and type 0x10
+                    if message_type == 0x08:
+                        # For type 0x08, the lower nibble is a code that maps to physical button id
+                        # Using formula: ((code + 2) % 4) + 1 based on reverse engineering findings
+                        code_nibble = parameter & 0x0F
+                        button = ((code_nibble + 2) % 4) + 1
                         self._logger.debug(
-                            f"EVO button extraction: parameter=0x{parameter:02x}, using upper nibble, button={button}"
+                            f"Type 0x08 button extraction: parameter=0x{parameter:02x}, code={code_nibble}, button={button}"
                         )
                     else:
-                        button = button_lower
-                        self._logger.debug(
-                            f"EVO button extraction: parameter=0x{parameter:02x}, using lower nibble, button={button}"
-                        )
+                        # For type 0x10, use existing logic
+                        button_lower = parameter & 0x0F
+                        button_upper = (parameter >> 4) & 0x0F
+
+                        # Use upper 4 bits if lower 4 bits are 0, otherwise use lower 4 bits
+                        if button_lower == 0 and button_upper != 0:
+                            button = button_upper
+                            self._logger.debug(
+                                f"Type 0x10 button extraction: parameter=0x{parameter:02x}, using upper nibble, button={button}"
+                            )
+                        else:
+                            button = button_lower
+                            self._logger.debug(
+                                f"Type 0x10 button extraction: parameter=0x{parameter:02x}, using lower nibble, button={button}"
+                            )
 
                     # For type 0x10 messages, we need to pass additional data beyond the declared payload
                     if message_type == 0x10:
@@ -598,6 +649,17 @@ class CasambiClient:
             self._logger.error(
                 f"Ran out of data while parsing switch event packet! "
                 f"Remaining data {b2a(data[oldPos:])} in {b2a(data)}."
+            )
+
+        # Log summary of all messages found
+        self._logger.info(
+            f"[CASAMBI_PARSE_SUMMARY] Packet #{packet_seq}: Found {len(all_messages_found)} messages, "
+            f"{switch_events_found} switch events"
+        )
+        for i, msg in enumerate(all_messages_found):
+            self._logger.info(
+                f"[CASAMBI_MSG_{i+1}] Type=0x{msg['type']:02x} Pos={msg['pos']} "
+                f"Flags=0x{msg['flags']:02x} Param=0x{msg['param']:02x} Payload={msg['payload']}"
             )
 
         if switch_events_found == 0:
@@ -694,13 +756,13 @@ class CasambiClient:
             f"action={action_display} ({event_string}), flags=0x{flags:02x}"
         )
 
-        # Filter out all type 0x08 messages
+        # Log detailed info about type 0x08 messages (now processed, not filtered)
         if message_type == 0x08:
-            self._logger.debug(
-                f"Filtering out type 0x08 event: button={button}, unit_id={unit_id}, "
-                f"action={action_display}, flags=0x{flags:02x}"
+            self._logger.info(
+                f"[CASAMBI_TYPE08_PROCESSED] Type 0x08 event processed: button={button}, unit_id={unit_id}, "
+                f"action={action_display}, event={event_string}, flags=0x{flags:02x}, "
+                f"payload={hexlify(payload).decode()}, extra_data={hexlify(extra_data).decode() if extra_data else 'none'}"
             )
-            return
 
         self._dataCallback(
             IncommingPacketType.SwitchEvent,
