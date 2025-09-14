@@ -2,11 +2,9 @@ import asyncio
 import logging
 import struct
 from binascii import b2a_hex as b2a
-from binascii import hexlify
 from collections.abc import Callable
-from enum import IntEnum, unique
 from hashlib import sha256
-from typing import Any, Final
+from typing import Any
 
 from bleak import BleakClient
 from bleak.backends.characteristic import BleakGATTCharacteristic
@@ -21,7 +19,15 @@ from bleak_retry_connector import (
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric import ec
 
-from ._constants import CASA_AUTH_CHAR_UUID, ConnectionState
+from CasambiBt._switch import parseSwitchEvents
+
+from ._constants import (
+    CASA_AUTH_CHAR_UUID,
+    MAX_VERSION,
+    MIN_VERSION,
+    ConnectionState,
+    IncomingPacketType,
+)
 from ._encryption import Encryptor
 from ._network import Network
 
@@ -35,22 +41,11 @@ from .errors import (  # noqa: E402
 )
 
 
-@unique
-class IncommingPacketType(IntEnum):
-    UnitState = 6
-    SwitchEvent = 7
-    NetworkConfig = 9
-
-
-MIN_VERSION: Final[int] = 10
-MAX_VERSION: Final[int] = 10
-
-
 class CasambiClient:
     def __init__(
         self,
         address_or_device: str | BLEDevice,
-        dataCallback: Callable[[IncommingPacketType, dict[str, Any]], None],
+        dataCallback: Callable[[IncomingPacketType, Any], None],
         disonnectedCallback: Callable[[], None],
         network: Network,
     ) -> None:
@@ -441,13 +436,14 @@ class CasambiClient:
             f"[CASAMBI_DECRYPTED] Type={packetType} #{self._inPacketCount}: {b2a(decrypted_data)}"
         )
 
-        if packetType == IncommingPacketType.UnitState:
+        if packetType == IncomingPacketType.UnitState:
             self._parseUnitStates(decrypted_data[1:])
-        elif packetType == IncommingPacketType.SwitchEvent:
-            self._parseSwitchEvent(
+        elif packetType == IncomingPacketType.SwitchEvent:
+            for s in parseSwitchEvents(
                 decrypted_data[1:], self._inPacketCount, raw_encrypted_packet
-            )
-        elif packetType == IncommingPacketType.NetworkConfig:
+            ):
+                self._dataCallback(IncomingPacketType.SwitchEvent, s)
+        elif packetType == IncomingPacketType.NetworkConfig:
             # We don't care about the config the network thinks it has.
             # We assume that cloud config and local config match.
             # If there is a mismatch the user can solve it using the app.
@@ -490,7 +486,7 @@ class CasambiClient:
                 )
 
                 self._dataCallback(
-                    IncommingPacketType.UnitState,
+                    IncomingPacketType.UnitState,
                     {"id": id, "online": online, "on": on, "state": state},
                 )
 
@@ -499,288 +495,6 @@ class CasambiClient:
             self._logger.error(
                 f"Ran out of data while parsing unit state! Remaining data {b2a(data[oldPos:])} in {b2a(data)}."
             )
-
-    def _parseSwitchEvent(
-        self, data: bytes, packet_seq: int = None, raw_packet: bytes = None
-    ) -> None:
-        """Parse switch event packet which contains multiple message types."""
-        self._logger.info(
-            f"Parsing incoming switch event packet #{packet_seq}... Data: {b2a(data)}"
-        )
-
-        # Log complete packet structure with marker
-        self._logger.info(
-            f"[CASAMBI_SWITCH_PACKET] Full data #{packet_seq}: hex={b2a(data)} len={len(data)}"
-        )
-
-        # Special handling for message type 0x29 - not a switch event
-        if len(data) >= 1 and data[0] == 0x29:
-            self._logger.debug(
-                f"Ignoring message type 0x29 (not a switch event): {b2a(data)}"
-            )
-            return
-
-        pos = 0
-        oldPos = 0
-        switch_events_found = 0
-        all_messages_found = []
-
-        try:
-            while pos <= len(data) - 3:
-                oldPos = pos
-
-                # Parse message header
-                message_type = data[pos]
-                flags = data[pos + 1]
-                length = ((data[pos + 2] >> 4) & 15) + 1
-                parameter = data[pos + 2]  # Full byte, not just lower 4 bits
-                pos += 3
-
-                # Log every message found with detailed structure
-                self._logger.info(
-                    f"[CASAMBI_MSG_FOUND] At pos={oldPos}: type=0x{message_type:02x} flags=0x{flags:02x} "
-                    f"len={length} param=0x{parameter:02x}"
-                )
-
-                # Sanity check: message type should be reasonable
-                if message_type > 0x80:
-                    self._logger.debug(
-                        f"Skipping invalid message type 0x{message_type:02x} at position {oldPos}"
-                    )
-                    # Try to resync by looking for next valid message
-                    pos = oldPos + 1
-                    continue
-
-                # Check if we have enough data for the payload
-                if pos + length > len(data):
-                    self._logger.debug(
-                        f"Incomplete message at position {oldPos}. "
-                        f"Type: 0x{message_type:02x}, declared length: {length}, available: {len(data) - pos}"
-                    )
-                    break
-
-                # Extract the payload
-                payload = data[pos : pos + length]
-                pos += length
-
-                # Log the payload
-                self._logger.info(
-                    f"[CASAMBI_MSG_PAYLOAD] Type 0x{message_type:02x} payload: {b2a(payload)} "
-                    f"(bytes {oldPos+3} to {oldPos+3+length-1})"
-                )
-
-                # Track all messages
-                all_messages_found.append(
-                    {
-                        "type": message_type,
-                        "pos": oldPos,
-                        "flags": flags,
-                        "param": parameter,
-                        "payload": b2a(payload),
-                    }
-                )
-
-                # Process based on message type
-                if message_type == 0x08 or message_type == 0x10:  # Switch/button events
-                    switch_events_found += 1
-
-                    # Button extraction differs between type 0x08 and type 0x10
-                    if message_type == 0x08:
-                        # For type 0x08, the lower nibble is a code that maps to physical button id
-                        # Using formula: ((code + 2) % 4) + 1 based on reverse engineering findings
-                        code_nibble = parameter & 0x0F
-                        button = ((code_nibble + 2) % 4) + 1
-                        self._logger.debug(
-                            f"Type 0x08 button extraction: parameter=0x{parameter:02x}, code={code_nibble}, button={button}"
-                        )
-                    else:
-                        # For type 0x10, use existing logic
-                        button_lower = parameter & 0x0F
-                        button_upper = (parameter >> 4) & 0x0F
-
-                        # Use upper 4 bits if lower 4 bits are 0, otherwise use lower 4 bits
-                        if button_lower == 0 and button_upper != 0:
-                            button = button_upper
-                            self._logger.debug(
-                                f"Type 0x10 button extraction: parameter=0x{parameter:02x}, using upper nibble, button={button}"
-                            )
-                        else:
-                            button = button_lower
-                            self._logger.debug(
-                                f"Type 0x10 button extraction: parameter=0x{parameter:02x}, using lower nibble, button={button}"
-                            )
-
-                    # For type 0x10 messages, we need to pass additional data beyond the declared payload
-                    if message_type == 0x10:
-                        # Extend to include at least 10 bytes from message start for state byte
-                        extended_end = min(oldPos + 11, len(data))
-                        full_message_data = data[oldPos:extended_end]
-                    else:
-                        full_message_data = data
-                    self._processSwitchMessage(
-                        message_type,
-                        flags,
-                        button,
-                        payload,
-                        full_message_data,
-                        oldPos,
-                        packet_seq,
-                        raw_packet,
-                    )
-                elif message_type == 0x29:
-                    # This shouldn't happen due to check above, but just in case
-                    self._logger.debug("Ignoring embedded type 0x29 message")
-                elif message_type in [0x00, 0x06, 0x09, 0x1F, 0x2A]:
-                    # Known non-switch message types - log at debug level
-                    self._logger.debug(
-                        f"Non-switch message type 0x{message_type:02x}: flags=0x{flags:02x}, "
-                        f"param={parameter}, payload={b2a(payload)}"
-                    )
-                else:
-                    # Unknown message types - log at info level
-                    self._logger.info(
-                        f"Unknown message type 0x{message_type:02x}: flags=0x{flags:02x}, "
-                        f"param={parameter}, payload={b2a(payload)}"
-                    )
-
-                oldPos = pos
-
-        except IndexError:
-            self._logger.error(
-                f"Ran out of data while parsing switch event packet! "
-                f"Remaining data {b2a(data[oldPos:])} in {b2a(data)}."
-            )
-
-        # Log summary of all messages found
-        self._logger.info(
-            f"[CASAMBI_PARSE_SUMMARY] Packet #{packet_seq}: Found {len(all_messages_found)} messages, "
-            f"{switch_events_found} switch events"
-        )
-        for i, msg in enumerate(all_messages_found):
-            self._logger.info(
-                f"[CASAMBI_MSG_{i+1}] Type=0x{msg['type']:02x} Pos={msg['pos']} "
-                f"Flags=0x{msg['flags']:02x} Param=0x{msg['param']:02x} Payload={msg['payload']}"
-            )
-
-        if switch_events_found == 0:
-            self._logger.debug(f"No switch events found in packet: {b2a(data)}")
-
-    def _processSwitchMessage(
-        self,
-        message_type: int,
-        flags: int,
-        button: int,
-        payload: bytes,
-        full_data: bytes,
-        start_pos: int,
-        packet_seq: int = None,
-        raw_packet: bytes = None,
-    ) -> None:
-        """Process a switch/button message (types 0x08 or 0x10)."""
-        if not payload:
-            self._logger.error("Switch message has empty payload")
-            return
-
-        # Extract unit_id based on message type
-        if message_type == 0x10 and len(payload) >= 3:
-            # Type 0x10: unit_id is at payload[2]
-            unit_id = payload[2]
-            extra_data = payload[3:] if len(payload) > 3 else b""
-        else:
-            # Standard parsing for other message types
-            unit_id = payload[0]
-            extra_data = b""
-            if len(payload) > 2:
-                extra_data = payload[2:]
-
-        # Extract action based on message type (action SHOULD be different for press vs release)
-        if message_type == 0x10 and len(payload) > 1:
-            # Type 0x10: action is at payload[1]
-            action = payload[1]
-        elif len(payload) > 1:
-            # Other types: action is at payload[1]
-            action = payload[1]
-        else:
-            action = None
-
-        event_string = "unknown"
-
-        # Different interpretation based on message type
-        if message_type == 0x08:
-            # Type 0x08: Use bit 1 of action for press/release
-            if action is not None:
-                is_release = (action >> 1) & 1
-                event_string = "button_release" if is_release else "button_press"
-        elif message_type == 0x10:
-            # Type 0x10: The state byte is at position 9 (0-indexed) from message start
-            # This applies to all units, not just unit 31
-            # full_data for type 0x10 is the message data starting from position 0
-            state_pos = 9
-            if len(full_data) > state_pos:
-                state_byte = full_data[state_pos]
-                if state_byte == 0x01:
-                    event_string = "button_press"
-                elif state_byte == 0x02:
-                    event_string = "button_release"
-                elif state_byte == 0x09:
-                    event_string = "button_hold"
-                elif state_byte == 0x0C:
-                    event_string = "button_release_after_hold"
-                else:
-                    self._logger.debug(
-                        f"Type 0x10: Unknown state byte 0x{state_byte:02x} at message pos {state_pos}"
-                    )
-                    # Fallback: check if extra_data starts with 0x12 (indicates release)
-                    if len(extra_data) >= 1 and extra_data[0] == 0x12:
-                        event_string = "button_release"
-                    else:
-                        event_string = "button_press"
-            else:
-                # Fallback when message is too short
-                if len(extra_data) >= 1 and extra_data[0] == 0x12:
-                    event_string = "button_release"
-                    self._logger.debug(
-                        "Type 0x10: Using extra_data pattern for release detection"
-                    )
-                else:
-                    # Cannot determine state
-                    self._logger.warning(
-                        f"Type 0x10 message missing state info, unit_id={unit_id}, payload={b2a(payload)}"
-                    )
-                    event_string = "unknown"
-
-        action_display = f"{action:#04x}" if action is not None else "N/A"
-
-        self._logger.info(
-            f"Switch event (type 0x{message_type:02x}): button={button}, unit_id={unit_id}, "
-            f"action={action_display} ({event_string}), flags=0x{flags:02x}"
-        )
-
-        # Log detailed info about type 0x08 messages (now processed, not filtered)
-        if message_type == 0x08:
-            self._logger.info(
-                f"[CASAMBI_TYPE08_PROCESSED] Type 0x08 event processed: button={button}, unit_id={unit_id}, "
-                f"action={action_display}, event={event_string}, flags=0x{flags:02x}, "
-                f"payload={hexlify(payload).decode()}, extra_data={hexlify(extra_data).decode() if extra_data else 'none'}"
-            )
-
-        self._dataCallback(
-            IncommingPacketType.SwitchEvent,
-            {
-                "message_type": message_type,
-                "button": button,
-                "unit_id": unit_id,
-                "action": action,
-                "event": event_string,
-                "flags": flags,
-                "extra_data": extra_data,
-                "packet_sequence": packet_seq,
-                "raw_packet": b2a(raw_packet) if raw_packet else None,
-                "decrypted_data": b2a(full_data),
-                "message_position": start_pos,
-                "payload_hex": b2a(payload),
-            },
-        )
 
     async def disconnect(self) -> None:
         self._logger.info("Disconnecting...")
