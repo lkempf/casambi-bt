@@ -227,11 +227,6 @@ def _processSwitchMessage(
                 _LOGGER.debug(
                     f"Type 0x10: Unknown state byte 0x{state_byte:02x} at message pos {state_pos}"
                 )
-                # Fallback: check if extra_data starts with 0x12 (indicates release)
-                if len(extra_data) >= 1 and extra_data[0] == 0x12:
-                    event = ButtonEventType.RELEASE
-                else:
-                    event = ButtonEventType.PRESS
         else:
             # Fallback when message is too short
             if len(extra_data) >= 1 and extra_data[0] == 0x12:
