@@ -3,9 +3,8 @@ import logging
 import struct
 from binascii import b2a_hex as b2a
 from collections.abc import Callable
-from enum import IntEnum, unique
 from hashlib import sha256
-from typing import Any, Final
+from typing import Any
 
 from bleak import BleakClient
 from bleak.backends.characteristic import BleakGATTCharacteristic
@@ -20,7 +19,15 @@ from bleak_retry_connector import (
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric import ec
 
-from ._constants import CASA_AUTH_CHAR_UUID, ConnectionState
+from CasambiBt._switch import parseSwitchEvents
+
+from ._constants import (
+    CASA_AUTH_CHAR_UUID,
+    MAX_VERSION,
+    MIN_VERSION,
+    ConnectionState,
+    IncomingPacketType,
+)
 from ._encryption import Encryptor
 from ._network import Network
 
@@ -34,21 +41,11 @@ from .errors import (  # noqa: E402
 )
 
 
-@unique
-class IncommingPacketType(IntEnum):
-    UnitState = 6
-    NetworkConfig = 9
-
-
-MIN_VERSION: Final[int] = 10
-MAX_VERSION: Final[int] = 10
-
-
 class CasambiClient:
     def __init__(
         self,
         address_or_device: str | BLEDevice,
-        dataCallback: Callable[[IncommingPacketType, dict[str, Any]], None],
+        dataCallback: Callable[[IncomingPacketType, Any], None],
         disonnectedCallback: Callable[[], None],
         network: Network,
     ) -> None:
@@ -414,19 +411,39 @@ class CasambiClient:
         # TODO: Check incoming counter and direction flag
         self._inPacketCount += 1
 
+        # Store raw encrypted packet for reference
+        raw_encrypted_packet = data[:]
+
+        # Log raw encrypted packet with special marker for easy filtering
+        self._logger.info(
+            f"[CASAMBI_RAW_PACKET] Encrypted #{self._inPacketCount}: {b2a(raw_encrypted_packet)}"
+        )
+
         try:
-            data = self._encryptor.decryptAndVerify(data, data[:4] + self._nonce[4:])
+            decrypted_data = self._encryptor.decryptAndVerify(
+                data, data[:4] + self._nonce[4:]
+            )
         except InvalidSignature:
             # We only drop packets with invalid signature here instead of going into an error state
             self._logger.error(f"Invalid signature for packet {b2a(data)}!")
             return
 
-        packetType = data[0]
-        self._logger.debug(f"Incoming data of type {packetType}: {b2a(data)}")
+        packetType = decrypted_data[0]
+        self._logger.debug(f"Incoming data of type {packetType}: {b2a(decrypted_data)}")
 
-        if packetType == IncommingPacketType.UnitState:
-            self._parseUnitStates(data[1:])
-        elif packetType == IncommingPacketType.NetworkConfig:
+        # Log decrypted packet with special marker
+        self._logger.info(
+            f"[CASAMBI_DECRYPTED] Type={packetType} #{self._inPacketCount}: {b2a(decrypted_data)}"
+        )
+
+        if packetType == IncomingPacketType.UnitState:
+            self._parseUnitStates(decrypted_data[1:])
+        elif packetType == IncomingPacketType.SwitchEvent:
+            for s in parseSwitchEvents(
+                decrypted_data[1:], self._inPacketCount, raw_encrypted_packet
+            ):
+                self._dataCallback(IncomingPacketType.SwitchEvent, s)
+        elif packetType == IncomingPacketType.NetworkConfig:
             # We don't care about the config the network thinks it has.
             # We assume that cloud config and local config match.
             # If there is a mismatch the user can solve it using the app.
@@ -469,7 +486,7 @@ class CasambiClient:
                 )
 
                 self._dataCallback(
-                    IncommingPacketType.UnitState,
+                    IncomingPacketType.UnitState,
                     {"id": id, "online": online, "on": on, "state": state},
                 )
 

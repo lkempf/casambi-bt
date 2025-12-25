@@ -14,3 +14,14 @@ class ConnectionState(IntEnum):
     KEY_EXCHANGED = 2
     AUTHENTICATED = 3
     ERROR = 99
+
+
+@unique
+class IncomingPacketType(IntEnum):
+    UnitState = 6
+    SwitchEvent = 7
+    NetworkConfig = 9
+
+
+MIN_VERSION: Final[int] = 10
+MAX_VERSION: Final[int] = 11
