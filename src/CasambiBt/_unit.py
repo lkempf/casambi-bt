@@ -224,7 +224,7 @@ class UnitState:
 
     @temperature.deleter
     def temperature(self) -> None:
-        self.temperature = None
+        self._temperature = None
 
     @property
     def colorsource(self) -> ColorSource | None:
@@ -268,7 +268,7 @@ class UnitState:
 
     @slider.deleter
     def slider(self) -> None:
-        self.slider = None
+        self._slider = None
 
     @property
     def onoff(self) -> bool | None:
@@ -283,7 +283,7 @@ class UnitState:
         self._onoff = None
 
     def __repr__(self) -> str:
-        return f"UnitState(dimmer={self.dimmer}, vertical={self._vertical}, rgb={self.rgb.__repr__()}, white={self.white}, temperature={self.temperature}, colorsource={self.colorsource}, xy={self.xy}, slider={self.slider}, onoff={self.onoff})"
+        return f"UnitState(dimmer={self.dimmer}, vertical={self.vertical}, rgb={self.rgb.__repr__()}, white={self.white}, temperature={self.temperature}, colorsource={self.colorsource}, xy={self.xy}, slider={self.slider}, onoff={self.onoff})"
 
 
 # TODO: Make unit immutable (refactor state, on, online out of it)
