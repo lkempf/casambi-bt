@@ -165,9 +165,18 @@ class CasambiClient:
             if not (
                 firstResp[0] == 0x1 and firstResp[1] == self._network.protocolVersion
             ):
-                self._logger.error(
-                    "Unexpected answer from device! Wrong device or protocol version? Trying to continue."
-                )
+                if (
+                    firstResp[0] == 0x1
+                    and firstResp[1] == 0x2B
+                    and self._network.protocolVersion == 11
+                ):
+                    # This is what happens for protocol version 11 so skip the error.
+                    # TODO: Implement proper handling after understanding this behavior.
+                    pass
+                else:
+                    self._logger.error(
+                        "Unexpected answer from device! Wrong device or protocol version? Trying to continue."
+                    )
 
             # Parse device info
             self._mtu, self._unit, self._flags, self._nonce = struct.unpack_from(
