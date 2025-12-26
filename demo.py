@@ -1,14 +1,31 @@
 import asyncio
 import logging
+import sys
+from importlib.metadata import version
 
 from CasambiBt import Casambi, discover
 
-_LOGGER = logging.getLogger()
-_LOGGER.addHandler(logging.StreamHandler())
+formatter = logging.Formatter(
+    fmt="%(asctime)s %(name)-8s %(levelname)-8s %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+stream = logging.StreamHandler()
+stream.setFormatter(formatter)
+logging.getLogger().addHandler(stream)
+_LOGGER = logging.getLogger(__name__)
 
 
 async def main() -> None:
-    logging.getLogger("CasambiBt").setLevel(logging.DEBUG)
+    logLevel = logging.INFO
+    if "-d" in sys.argv:
+        logLevel = logging.DEBUG
+        logging.getLogger("bleak").setLevel(logging.DEBUG)
+
+    _LOGGER.setLevel(logLevel)
+    logging.getLogger("CasambiBt").setLevel(logLevel)
+
+    _LOGGER.debug(f"Bleak version: {version("bleak")}")
+    _LOGGER.debug(f"Bleak retry connector version: {version("bleak-retry-connector")}")
 
     # Discover networks
     print("Searching...")
