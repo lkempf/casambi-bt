@@ -4,7 +4,7 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-bleak = ">=0.22"
+bleak = ">=0.22, <2.0.0"
 bleak-retry-connector = ">=3.6.0"
 cryptography = ">=40.0.0"
 httpx = ">=0.25"
@@ -19,4 +19,4 @@ build = "*"
 twine = "*"
 
 [requires]
-python_version = "3.12"
+python_version = "3.13"
