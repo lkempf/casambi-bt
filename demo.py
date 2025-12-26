@@ -24,8 +24,8 @@ async def main() -> None:
     _LOGGER.setLevel(logLevel)
     logging.getLogger("CasambiBt").setLevel(logLevel)
 
-    _LOGGER.debug(f"Bleak version: {version("bleak")}")
-    _LOGGER.debug(f"Bleak retry connector version: {version("bleak-retry-connector")}")
+    _LOGGER.debug(f"Bleak version: {version('bleak')}")
+    _LOGGER.debug(f"Bleak retry connector version: {version('bleak-retry-connector')}")
 
     # Discover networks
     print("Searching...")
