@@ -146,3 +146,6 @@ cython_debug/
 
 *.pck
 **/casambi-bt-store
+
+# Local dev scripts can include credentials; keep them out of git.
+local_listen.py

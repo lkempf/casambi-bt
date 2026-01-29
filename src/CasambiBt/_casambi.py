@@ -9,8 +9,6 @@ from typing import Any, cast
 from bleak.backends.device import BLEDevice
 from httpx import AsyncClient, RequestError
 
-from CasambiBt._switch import SwitchEvent
-
 from ._cache import Cache
 from ._client import CasambiClient, ConnectionState, IncomingPacketType
 from ._network import Network
@@ -35,7 +33,7 @@ class Casambi:
         self._casaNetwork: Network | None = None
 
         self._unitChangedCallbacks: list[Callable[[Unit], None]] = []
-        self._switchEventCallbacks: list[Callable[[SwitchEvent], None]] = []
+        self._switchEventCallbacks: list[Callable[[dict[str, Any]], None]] = []
         self._disconnectCallbacks: list[Callable[[], None]] = []
 
         self._logger = logging.getLogger(__name__)
@@ -390,7 +388,7 @@ class Casambi:
                 raise exc
 
     def _dataCallback(
-        self, packetType: IncomingPacketType, data: dict[str, Any] | SwitchEvent
+        self, packetType: IncomingPacketType, data: dict[str, Any]
     ) -> None:
         self._logger.info(f"Incomming data callback of type {packetType}")
         if packetType == IncomingPacketType.UnitState:
@@ -422,10 +420,10 @@ class Casambi:
                     f"Changed state notification for unkown unit {unitData['id']}"
                 )
         elif packetType == IncomingPacketType.SwitchEvent:
-            switchData = cast(SwitchEvent, data)
+            switchData = cast(dict[str, Any], data)
             self._logger.debug(
-                f"Handling switch event: unit_id={switchData.unit_id}, "
-                f"button={switchData.button}, event={switchData.event}"
+                f"Handling switch event: unit_id={switchData.get('unit_id')}, "
+                f"button={switchData.get('button')}, event={switchData.get('event')}"
             )
 
             # Notify listeners
@@ -462,18 +460,22 @@ class Casambi:
         self._logger.debug(f"Removed unit changed handler {handler}")
 
     def registerSwitchEventHandler(
-        self, handler: Callable[[SwitchEvent], None]
+        self, handler: Callable[[dict[str, Any]], None]
     ) -> None:
         """Register a new handler for switch events.
 
         This handler is called whenever a switch event is received.
-        The handler is supplied with a dictionary containing:
-        - unit_id: The ID of the switch unit
-        - button: The button number that was pressed/released
-        - event: Either "button_press" or "button_release"
-        - message_type: The raw message type (0x08 or 0x10)
-        - flags: Additional flags from the message
-        - extra_data: Any additional data from the message
+        The handler is supplied with a dictionary containing (at minimum):
+        - unit_id: target unit id (from INVOCATION target high byte)
+        - button: best-effort "label" (typically 1..4 for 4-gang switches)
+        - event: "button_press" | "button_release" | "input_event"
+
+        Switch events are parsed from decrypted packet type=7 (INVOCATION stream),
+        matching casambi-android `v1.C1775b.Q(Q2.h)`. Extra diagnostic keys include:
+        - invocation_flags, opcode, origin, target, target_type, age, origin_handle
+        - button_event_index (0..7), param_p, param_s
+        - input_index (0..7), input_code, input_b1, input_channel, input_value16, input_mapped_event
+        - packet_sequence, arrival_sequence, raw_packet, decrypted_data, payload_hex, frame_offset, event_id
 
         :param handler: The method to call when a switch event is received.
         """
@@ -481,7 +483,7 @@ class Casambi:
         self._logger.debug(f"Registered switch event handler {handler}")
 
     def unregisterSwitchEventHandler(
-        self, handler: Callable[[SwitchEvent], None]
+        self, handler: Callable[[dict[str, Any]], None]
     ) -> None:
         """Unregister an existing switch event handler.
 
