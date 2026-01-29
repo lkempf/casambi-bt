@@ -172,6 +172,34 @@ class TestSwitchEventsFromLogs(unittest.TestCase):
         self.assertEqual(btn_b4[0]["button"], 4)
         self.assertEqual(btn_b4[0]["button_event_index"], 0)
 
+    def test_notify_input_fields_are_exposed(self) -> None:
+        repo_root = Path(__file__).resolve().parents[2]
+        log_path = repo_root / "testlogs" / "another_wireless_single_press.log"
+        payloads = _extract_switch_payloads_from_log(log_path)
+        self.assertGreater(len(payloads), 0, "No switch payloads extracted from log.")
+
+        dec = SwitchEventStreamDecoder()
+        events: list[dict] = []
+        for p in payloads:
+            evs, _ = dec.decode(p)
+            events.extend(evs)
+
+        # In the captured log we have a NotifyInput frame with payload 0209:
+        # input_code=0x02 (release), channel=(0x09&7)=1, value16 absent (len=2).
+        notify = [
+            e
+            for e in events
+            if e.get("target_type") == 0x12 and e.get("opcode") == 0x41 and e.get("payload_hex") == b"0209"
+        ]
+        self.assertGreaterEqual(len(notify), 1)
+        e0 = notify[0]
+        self.assertEqual(e0["event"], "input_event")
+        self.assertEqual(e0["input_code"], 0x02)
+        self.assertEqual(e0["input_b1"], 0x09)
+        self.assertEqual(e0["input_channel"], 1)
+        self.assertIsNone(e0["input_value16"])
+        self.assertEqual(e0["input_mapped_event"], "button_release")
+
 
 if __name__ == "__main__":
     unittest.main()

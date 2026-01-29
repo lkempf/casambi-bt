@@ -204,6 +204,13 @@ class SwitchEventStreamDecoder:
             stats.frames_input += 1
             input_index = frame.opcode - _INPUT_EVENT_MIN
             input_code = frame.payload[0] if frame.payload else None
+            input_b1 = frame.payload[1] if len(frame.payload) >= 2 else None
+            input_channel = (input_b1 & 0x07) if input_b1 is not None else None
+            input_value16 = (
+                int.from_bytes(frame.payload[2:4], "little")
+                if len(frame.payload) >= 4
+                else None
+            )
             button = _guess_button_label_4gang(input_index)
 
             # Map common input codes into the legacy "switch" event taxonomy.
@@ -220,6 +227,8 @@ class SwitchEventStreamDecoder:
                     mapped_event = "button_press"
                 elif input_code == 0x02:
                     mapped_event = "button_release"
+
+            input_mapped_event = mapped_event
 
             # Avoid duplicating press/release for wireless switches that also produce the real button stream.
             if mapped_event in ("button_press", "button_release") and (unit_id, button) in self._button_stream_seen:
@@ -258,7 +267,7 @@ class SwitchEventStreamDecoder:
                 )
             event = mapped_event or "input_event"
             self._logger.debug(
-                "[CASAMBI_INPUT_EVENT] packet=%s unit=%d input=%d opcode=0x%02x origin=0x%04x age=0x%04x flags=0x%04x payload=%s",
+                "[CASAMBI_INPUT_EVENT] packet=%s unit=%d input=%d opcode=0x%02x origin=0x%04x age=0x%04x flags=0x%04x code=%s ch=%s val=%s payload=%s",
                 packet_seq,
                 unit_id,
                 input_index,
@@ -266,6 +275,9 @@ class SwitchEventStreamDecoder:
                 frame.origin,
                 frame.age,
                 frame.flags,
+                f"0x{input_code:02x}" if input_code is not None else None,
+                input_channel,
+                input_value16,
                 b2a(frame.payload),
             )
             return {
@@ -289,6 +301,10 @@ class SwitchEventStreamDecoder:
                 "frame_offset": frame.offset,
                 "input_index": input_index,
                 "input_code": input_code,
+                "input_b1": input_b1,
+                "input_channel": input_channel,
+                "input_value16": input_value16,
+                "input_mapped_event": input_mapped_event,
                 "packet_sequence": packet_seq,
                 "arrival_sequence": arrival_sequence,
                 "event_id": f"invoke:{frame.origin:04x}:{frame.age:04x}:{frame.opcode:02x}:{frame.target:04x}",
