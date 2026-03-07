@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 import struct
 from binascii import b2a_hex as b2a
 from collections.abc import Callable
@@ -9,7 +10,7 @@ from typing import Any
 from bleak import BleakClient
 from bleak.backends.characteristic import BleakGATTCharacteristic
 from bleak.backends.client import BLEDevice
-from bleak.exc import BleakError
+from bleak.exc import BleakDBusError, BleakError
 from bleak_retry_connector import (
     BleakNotFoundError,
     close_stale_connections,
@@ -150,15 +151,48 @@ class CasambiClient:
             self._disconnectedCallback()
         self._connectionState = ConnectionState.NONE
 
-    async def exchangeKey(self) -> None:
+    async def _read_gatt_char_with_retry(self, char_uuid: str, max_retries: int = 3) -> bytes:
+        """Read GATT characteristic with exponential backoff retry.
+
+        Handles transient BlueZ DBus errors that occur when GATT service discovery
+        has not yet completed after a BLE connection is established.
+        """
+        for attempt in range(max_retries):
+            try:
+                return await self._gattClient.read_gatt_char(char_uuid)
+            except BleakDBusError as e:
+                if attempt == max_retries - 1:
+                    raise
+                is_transient = (
+                    "0x0e" in str(e)
+                    or "Unlikely Error" in str(e)
+                    or "Failed" in str(e)
+                    or "UnknownObject" in str(e)
+                )
+                if not is_transient:
+                    raise
+                delay = (2**attempt) + random.uniform(0, 1)
+                self._logger.warning(
+                    f"GATT read failed (attempt {attempt + 1}/{max_retries}), retrying in {delay:.2f}s: {e}"
+                )
+                await asyncio.sleep(delay)
+        raise RuntimeError("Should not reach here")
+
+    async def exchangeKey(self, timeout: float = 10.0) -> None:
         self._checkState(ConnectionState.CONNECTED)
+
+        if not self._gattClient or not self._gattClient.is_connected:
+            raise ProtocolError("GATT client is not connected")
 
         self._logger.info("Starting key exchange...")
 
+        # Small delay to allow BlueZ to complete GATT service discovery after connect.
+        await asyncio.sleep(0.5)
+
         await self._activityLock.acquire()
         try:
-            # Initiate communication with device
-            firstResp = await self._gattClient.read_gatt_char(CASA_AUTH_CHAR_UUID)
+            # Initiate communication with device, retrying on transient DBus errors.
+            firstResp = await self._read_gatt_char_with_retry(CASA_AUTH_CHAR_UUID)
             self._logger.debug(f"Got {b2a(firstResp)}")
 
             # Check type and protocol version
@@ -197,7 +231,11 @@ class CasambiClient:
             self._activityLock.release()
 
         # Wait for key exchange, will get notified by _exchNotifyCallback
-        await self._notifySignal.wait()
+        try:
+            await asyncio.wait_for(self._notifySignal.wait(), timeout=timeout)
+        except TimeoutError:
+            self._logger.error(f"Key exchange timed out after {timeout}s")
+            raise ProtocolError(f"Key exchange timed out after {timeout}s")
         await self._activityLock.acquire()
         try:
             self._notifySignal.clear()
@@ -218,7 +256,11 @@ class CasambiClient:
             self._activityLock.release()
 
         # Wait for success response from _exchNotifyCallback
-        await self._notifySignal.wait()
+        try:
+            await asyncio.wait_for(self._notifySignal.wait(), timeout=timeout)
+        except TimeoutError:
+            self._logger.error(f"Key exchange confirmation timed out after {timeout}s")
+            raise ProtocolError(f"Key exchange confirmation timed out after {timeout}s")
         await self._activityLock.acquire()
         try:
             self._notifySignal.clear()
@@ -240,18 +282,22 @@ class CasambiClient:
         self._callbackQueue.put_nowait((handle, data))
 
     async def _processCallbacks(self) -> None:
-        while True:
-            handle, data = await self._callbackQueue.get()
+        try:
+            while True:
+                handle, data = await self._callbackQueue.get()
 
-            # Try to loose any races here.
-            # Otherwise a state change caused by the last packet might not have been handled yet
-            await asyncio.sleep(0.001)
-            await self._activityLock.acquire()
-            try:
-                self._callbackMulitplexer(handle, data)
-            finally:
-                self._callbackQueue.task_done()
-                self._activityLock.release()
+                # Try to loose any races here.
+                # Otherwise a state change caused by the last packet might not have been handled yet
+                await asyncio.sleep(0.001)
+                await self._activityLock.acquire()
+                try:
+                    self._callbackMulitplexer(handle, data)
+                finally:
+                    self._callbackQueue.task_done()
+                    self._activityLock.release()
+        except asyncio.CancelledError:
+            self._logger.debug("Callback processing task cancelled")
+            raise
 
     def _callbackMulitplexer(
         self, handle: BleakGATTCharacteristic, data: bytes
@@ -510,9 +556,16 @@ class CasambiClient:
     async def disconnect(self) -> None:
         self._logger.info("Disconnecting...")
 
-        if self._callbackTask is not None:
+        if self._callbackTask is not None and not self._callbackTask.done():
             self._callbackTask.cancel()
-            self._callbackTask = None
+            try:
+                await self._callbackTask
+            except asyncio.CancelledError:
+                self._logger.debug("Callback task cancelled successfully")
+            except Exception:
+                self._logger.error("Error while cancelling callback task", exc_info=True)
+            finally:
+                self._callbackTask = None
 
         if self._gattClient is not None and self._gattClient.is_connected:
             try:
