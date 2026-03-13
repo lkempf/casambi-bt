@@ -462,3 +462,101 @@ def test_unit_serialization_temperature():
     assert unit.state is not None
     assert unit.state.temperature is not None
     assert abs(unit.state.temperature - 4000) < 5
+
+
+def _make_unit(controls: list[UnitControl], state_length: int) -> Unit:
+    """Build a minimal Unit for testing."""
+    ut = UnitType(
+        id=1,
+        model="test",
+        manufacturer="test",
+        mode="test",
+        stateLength=state_length,
+        controls=controls,
+    )
+    return Unit(
+        _typeId=1,
+        deviceId=1,
+        uuid="1",
+        address="1",
+        name="1",
+        firmwareVersion="1",
+        unitType=ut,
+    )
+
+
+def test_unit_state_raw_state() -> None:
+    """raw_state is None initially, then mirrors the bytes passed to setStateFromBytes."""
+    state = UnitState()
+    assert state.raw_state is None
+
+    unit = _make_unit(
+        [
+            UnitControl(
+                type=UnitControlType.DIMMER,
+                offset=0,
+                length=8,
+                default=0,
+                readonly=False,
+            )
+        ],
+        state_length=1,
+    )
+
+    unit.setStateFromBytes(b"\xff")
+    assert unit.state is not None
+    assert unit.state.raw_state == b"\xff"
+
+    # Second call must overwrite, not accumulate.
+    unit.setStateFromBytes(b"\x00")
+    assert unit.state.raw_state == b"\x00"
+
+
+def test_unit_state_unknown_controls() -> None:
+    """unknown_controls captures UNKOWN controls and returns a defensive copy."""
+    unit = _make_unit(
+        [
+            UnitControl(
+                type=UnitControlType.UNKOWN,
+                offset=0,
+                length=8,
+                default=0,
+                readonly=False,
+            )
+        ],
+        state_length=1,
+    )
+
+    unit.setStateFromBytes(b"\x2a")
+    assert unit.state is not None
+    assert unit.state.unknown_controls == [(0, 8, 0x2A)]
+
+    # Mutating the returned list must not affect internal state.
+    copy = unit.state.unknown_controls
+    copy.clear()
+    assert unit.state.unknown_controls == [(0, 8, 0x2A)]
+
+
+def test_unit_state_unknown_controls_reset() -> None:
+    """unknown_controls is cleared on each setStateFromBytes call (no accumulation)."""
+    unit = _make_unit(
+        [
+            UnitControl(
+                type=UnitControlType.UNKOWN,
+                offset=0,
+                length=8,
+                default=0,
+                readonly=False,
+            )
+        ],
+        state_length=1,
+    )
+
+    unit.setStateFromBytes(b"\x01")
+    assert unit.state is not None
+    assert len(unit.state.unknown_controls) == 1
+
+    unit.setStateFromBytes(b"\x02")
+    controls = unit.state.unknown_controls
+    assert len(controls) == 1
+    assert controls[0][2] == 0x02
