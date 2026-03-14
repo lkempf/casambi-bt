@@ -188,7 +188,7 @@ class CasambiClient(ABC):
             )
 
     @abstractmethod
-    async def exchangeKey(self) -> None:
+    async def exchangeKey(self, retries: int = 2) -> None:
         pass
 
     @abstractmethod
@@ -287,18 +287,32 @@ class CasambiClientEvolution(CasambiClient):
         except TimeoutError as e:
             raise BluetoothError("Timed out while waiting for a response.") from e
 
-    async def exchangeKey(self) -> None:
+    async def exchangeKey(self, retries: int = 2) -> None:
         self._checkState(ConnectionState.CONNECTED)
 
         self._logger.info("Starting key exchange...")
 
         await self._activityLock.acquire()
         try:
-            # Initiate communication with device
-            try:
-                firstResp = await self._gattClient.read_gatt_char(CASA_AUTH_CHAR_UUID)
-            except BleakError as exc:
-                raise BluetoothError("Failed to initiate GATT read.") from exc
+            # Initiate communication with device.  The initial GATT read can fail
+            # transiently (e.g. ATT error 0x0e) if the device is not yet ready for
+            # GATT operations immediately after connection.  Retry with the same
+            # policy used by send().
+            retry = 0
+            while True:
+                try:
+                    firstResp = await self._gattClient.read_gatt_char(
+                        CASA_AUTH_CHAR_UUID
+                    )
+                    break
+                except BleakError as exc:
+                    if retry > retries:
+                        raise BluetoothError("Failed to initiate GATT read.") from exc
+                    self._logger.debug(
+                        "Transient error reading auth characteristic, retrying..."
+                    )
+                    retry += 1
+                    await asyncio.sleep(0.5)
             self._logger.debug(f"Got {b2a(firstResp)}")
 
             # Check type and protocol version
@@ -642,18 +656,32 @@ class CasambiClientClassic(CasambiClient):
                 f"Minimum supported version is {MIN_SUPPORTED_CLASSIC_VERSION}."
             )
 
-    async def exchangeKey(self) -> None:
+    async def exchangeKey(self, retries: int = 2) -> None:
         self._checkState(ConnectionState.CONNECTED)
 
         self._logger.info("Starting key exchange...")
 
         await self._activityLock.acquire()
         try:
-            # Initiate communication with device
-            try:
-                firstResp = await self._gattClient.read_gatt_char(CASA_AUTH_CHAR_UUID)
-            except BleakError as exc:
-                raise BluetoothError("Failed to initiate GATT read.") from exc
+            # Initiate communication with device.  The initial GATT read can fail
+            # transiently (e.g. ATT error 0x0e) if the device is not yet ready for
+            # GATT operations immediately after connection.  Retry with the same
+            # policy used by send().
+            retry = 0
+            while True:
+                try:
+                    firstResp = await self._gattClient.read_gatt_char(
+                        CASA_AUTH_CHAR_UUID
+                    )
+                    break
+                except BleakError as exc:
+                    if retry > retries:
+                        raise BluetoothError("Failed to initiate GATT read.") from exc
+                    self._logger.debug(
+                        "Transient error reading auth characteristic, retrying..."
+                    )
+                    retry += 1
+                    await asyncio.sleep(0.5)
             self._logger.debug(f"Got {b2a(firstResp)}")
 
             # Parse device info

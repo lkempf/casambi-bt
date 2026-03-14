@@ -270,3 +270,61 @@ def test_auth_notify_callback_invalid_sig(client):
     client._authNotifyCallback(None, b"1234" + b"invalid_data_that_fails_verification")
 
     assert client._connectionState == ConnectionState.ERROR
+
+
+@pytest.mark.anyio
+async def test_exchange_key_retries_on_transient_error(client):
+    """read_gatt_char failing once then succeeding should not raise."""
+    client._connectionState = ConnectionState.CONNECTED
+    client._gattClient = AsyncMock()
+
+    mock_nonce = b"1234567890123456"
+    first_resp = struct.pack(">BBBHH16s", 0x1, 10, 23, 1, 0, mock_nonce)
+
+    client._gattClient.read_gatt_char.side_effect = [
+        BleakError("transient"),
+        first_resp,
+    ]
+
+    device_priv = ec.generate_private_key(ec.SECP256R1())
+    device_pub = device_priv.public_key().public_numbers()
+
+    callback_data_1 = struct.pack(
+        "<B32s32s",
+        0x2,
+        device_pub.x.to_bytes(32, byteorder="little", signed=False),
+        device_pub.y.to_bytes(32, byteorder="little", signed=False),
+    )
+    callback_data_2 = struct.pack(">B", 0x3)
+
+    async def mock_start_notify(*args, **kwargs):
+        async def send_callbacks():
+            await asyncio.sleep(0)
+            client._exchNotifyCallback(None, callback_data_1)
+            await asyncio.sleep(0.05)
+            client._exchNotifyCallback(None, callback_data_2)
+
+        asyncio.create_task(send_callbacks())  # noqa: RUF006
+
+    client._gattClient.start_notify.side_effect = mock_start_notify
+
+    await client.exchangeKey()
+
+    assert client._gattClient.read_gatt_char.call_count == 2
+    assert client._connectionState == ConnectionState.AUTHENTICATED
+
+
+@pytest.mark.anyio
+async def test_exchange_key_fails_after_max_retries(client):
+    """read_gatt_char always failing should raise BluetoothError after 4 attempts (retries=2)."""
+    from CasambiBt.errors import BluetoothError
+
+    client._connectionState = ConnectionState.CONNECTED
+    client._gattClient = AsyncMock()
+    client._gattClient.read_gatt_char.side_effect = BleakError("persistent error")
+
+    with pytest.raises(BluetoothError):
+        await client.exchangeKey(retries=2)
+
+    # initial attempt + 3 retries = 4 total (consistent with send() convention)
+    assert client._gattClient.read_gatt_char.call_count == 4
