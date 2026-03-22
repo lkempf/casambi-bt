@@ -14,10 +14,7 @@ from CasambiBt._constants import (
     IncomingPacketType,
 )
 from CasambiBt._network import Network
-from CasambiBt.errors import (
-    ProtocolError,
-    UnsupportedProtocolVersion,
-)
+from CasambiBt.errors import ProtocolError, UnsupportedProtocolVersion
 
 
 @pytest.fixture
@@ -180,7 +177,7 @@ def test_establishedNotifyCallback_unit_state(client, data_callback):
 
     data_callback.assert_called_once_with(
         IncomingPacketType.UnitState,
-        {"id": 2, "online": True, "on": False, "state": b"\x42"},
+        {"id": 2, "online": True, "on": True, "state": b"\x42"},
     )
 
 

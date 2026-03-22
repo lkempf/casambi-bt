@@ -2,6 +2,7 @@ import asyncio
 import logging
 from binascii import b2a_hex as b2a
 from collections.abc import Callable
+from copy import copy
 from itertools import pairwise
 from pathlib import Path
 from typing import Any, cast
@@ -221,8 +222,24 @@ class Casambi:
         :return: Nothing is returned by this function. To get the new state register a change handler.
         :raises BluetoothError: An error occurred in the bluetooth stack.
         """
-        stateBytes = target.getStateAsBytes(state)
-        await self._send(target, stateBytes, OpCode.SetState)
+        if isClassicNetwork(self._casaNetwork.protocolVersion):  # type: ignore
+            for c in target.unitType.controls:
+                if c.type == UnitControlType.DIMMER and state.dimmer is not None:
+                    await self.setLevel(target, state.dimmer)
+                elif (
+                    c.type == UnitControlType.TEMPERATURE
+                    and state.temperature is not None
+                ):
+                    await self.setTemperature(target, state.temperature)
+                elif c.type == UnitControlType.VERTICAL and state.vertical is not None:
+                    await self.setVertical(target, state.vertical)
+                elif c.type == UnitControlType.WHITE and state.white is not None:
+                    await self.setWhite(target, state.white)
+                elif c.type == UnitControlType.RGB and state.rgb is not None:
+                    await self.setColor(target, state.rgb)
+        else:
+            stateBytes = target.getStateAsBytes(state)
+            await self._send(target, stateBytes, OpCode.SetState)
 
     async def setLevel(self, target: Unit | Group | None, level: int) -> None:
         """Set the level (brightness) for one or multiple units.
@@ -394,6 +411,31 @@ class Casambi:
             # Use RestoreLastLevel flag (1) and UseFullTimeFlag (4).
             # Not sure what UseFullTime does but this is what the app uses.
             await self._send(target, b"\xff\x05", OpCode.SetLevel)
+
+    async def turnOff(self, target: Unit | Group | None) -> None:
+        """Turn one or multiple units off.
+
+        If ``target`` is of type ``Unit`` only this unit is affected.
+        If ``target`` is of type ``Group`` the whole group is affected.
+        if ``target`` is of type ``None`` all units in the network are affected.
+
+        :param target: One or multiple targeted units.
+        :return: Nothing is returned by this function. To get the new state register a change handler.
+        :raises BluetoothError: An error occurred in the bluetooth stack.
+        """
+        self._checkNetwork()
+
+        if (
+            isinstance(target, Unit)
+            and target.unitType.get_control(UnitControlType.ONOFF) is not None
+            and not isClassicNetwork(self._casaNetwork.protocolVersion)  # type: ignore
+        ):
+            state = copy(target.state) if target.state is not None else UnitState()
+            state.onoff = False
+            stateBytes = target.getStateAsBytes(state)
+            await self._send(target, stateBytes, OpCode.SetState)
+        else:
+            await self.setLevel(target, 0)
 
     async def switchToScene(self, target: Scene, level: int = 0xFF) -> None:
         """Switch the network to a predefined scene.

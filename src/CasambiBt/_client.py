@@ -798,10 +798,10 @@ class CasambiClientClassic(CasambiClient):
                     f"Parsed state: Len {stateLen}, id {unitId}, prio {prio}, online {online}, extra1 {extra1Val}, extra2 {extra2Val}, state {b2a(state)}."
                 )
 
-                # It's ok to parse anything as on. The value will only be used if no appropriate controls are available.
+                # It's ok to pass anything as on. The value will only be used if no appropriate controls are available.
                 self._dataCallback(
                     IncomingPacketType.UnitState,
-                    {"id": unitId, "online": online, "on": False, "state": state},
+                    {"id": unitId, "online": online, "on": True, "state": state},
                 )
 
                 pos = statePos + stateLen

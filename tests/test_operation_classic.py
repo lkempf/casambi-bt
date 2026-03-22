@@ -1,9 +1,6 @@
 import pytest
 
-from CasambiBt._operation import (
-    OpCode,
-    OperationsContextClassic,
-)
+from CasambiBt._operation import OpCode, OperationsContextClassic
 from CasambiBt._unit import Group, Scene, Unit, UnitControl, UnitControlType, UnitType
 
 
@@ -77,8 +74,8 @@ def test_prepareOperation_unit_target(context, mock_unit):
     assert len(packet) == 6
     assert packet[1] == 0xC9
     assert packet[2] == 1
-    assert packet[3] == 200
-    assert packet[4] == 10  # targetId
+    assert packet[3] == 10  # targetId
+    assert packet[4] == 200
     assert packet[5:] == payload
     assert packet[0] == (len(packet) + 239) & 0xFF
     assert context._origin == 2
@@ -94,8 +91,8 @@ def test_prepareOperation_group_target(context, mock_group):
     assert len(packet) == 6
     assert packet[1] == 0xDD
     assert packet[2] == 1
-    assert packet[3] == 200
-    assert packet[4] == 20  # targetId
+    assert packet[3] == 20  # targetId
+    assert packet[4] == 200
     assert packet[5:] == payload
     assert packet[0] == (len(packet) + 239) & 0xFF
     assert context._origin == 2
@@ -111,8 +108,8 @@ def test_prepareOperation_scene_target(context, mock_scene):
     assert len(packet) == 5
     assert packet[1] == 0xC1
     assert packet[2] == 1
-    assert packet[3] == 200
-    assert packet[4] == 30  # targetId
+    assert packet[3] == 30  # targetId
+    assert packet[4] == 200
     assert packet[0] == (len(packet) + 239) & 0xFF
     assert context._origin == 2
 

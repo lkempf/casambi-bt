@@ -112,6 +112,22 @@ class UnitState:
         self._xy: tuple[float, float] | None = None
         self._slider: int | None = None
         self._onoff: bool | None = None
+        self._raw_state: bytes | None = None
+        self._unknown_controls: list[tuple[int, int, int]] = []
+
+    @property
+    def raw_state(self) -> bytes | None:
+        """Return the raw BLE state bytes last received for this unit, or None if not yet set."""
+        return self._raw_state
+
+    @property
+    def unknown_controls(self) -> list[tuple[int, int, int]]:
+        """Return a copy of the list of unknown controls parsed from the last state update.
+
+        Each entry is a tuple of ``(bit_offset, bit_length, value)`` corresponding to a
+        control whose type is :attr:`UnitControlType.UNKOWN`.
+        """
+        return list(self._unknown_controls)
 
     def _check_range(
         self, value: int | float, min: int | float, max: int | float
@@ -519,6 +535,9 @@ class Unit:
         if not self._state:
             self._state = UnitState()
 
+        self._state._raw_state = value
+        self._state._unknown_controls = []
+
         # TODO: Support for resolutions >8 byte?
         for c in self.unitType.controls:
             # Extract all relevant bytes from the state
@@ -565,6 +584,7 @@ class Unit:
                 _LOGGER.debug(
                     f"Value for unkown control type at {c.offset}: {cInt}. Unit type is {self.unitType.id}."
                 )
+                self._state._unknown_controls.append((c.offset, c.length, cInt))
 
         _LOGGER.debug(f"Parsed {b2a(value)} to {self.state.__repr__()}")
 

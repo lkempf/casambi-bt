@@ -93,7 +93,7 @@ class OperationsContextClassic(OperationsContext):
 
         # We always send origin, so set 0x40
         flags = _classicOpcodeMap[op][type(target)] | 0x40
-        packet = bytearray(4)
+        packet = bytearray(3)
 
         targetId = None
         if isinstance(target, Unit):
@@ -109,7 +109,7 @@ class OperationsContextClassic(OperationsContext):
 
         packet[1] = flags
         packet[2] = self._origin
-        packet[3] = self.lifetime
+        packet.append(self.lifetime)
 
         packet += payload
 
