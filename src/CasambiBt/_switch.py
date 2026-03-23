@@ -110,30 +110,31 @@ def parseSwitchEvents(data: bytes, packet_seq: int) -> list[SwitchEvent]:
 
                 # Button extraction differs between type 0x08 and type 0x10
                 if message_type == 0x08:
-                    # For type 0x08, the lower nibble is a code that maps to physical button id
-                    # Using formula: ((code + 2) % 4) + 1 based on reverse engineering findings
+                    # For type 0x08, the lower nibble is a code that maps to physical button id.
+                    # PTM215B produces code nibbles 13,14,15,0 for physical buttons 1,2,3,4.
+                    # Correct formula: ((code + 3) % 4) + 1
                     code_nibble = parameter & 0x0F
-                    button = ((code_nibble + 2) % 4) + 1
+                    button = ((code_nibble + 3) % 4) + 1
                     _LOGGER.debug(
                         f"Type 0x08 button extraction: parameter=0x{parameter:02x}, code={code_nibble}, button={button}"
                     )
                     full_message_data = data
                 elif message_type == 0x10:
-                    # For type 0x10, use existing logic
+                    # For type 0x10, the PTM215B produces parameter nibbles 4,1,2,3 for
+                    # physical buttons 1,2,3,4 (0x40,0x41,0x42,0x43).
+                    # Extract the raw nibble (upper when lower is 0, else lower), then
+                    # apply (raw % 4) + 1 to map to the correct button number.
                     button_lower = parameter & 0x0F
                     button_upper = (parameter >> 4) & 0x0F
-
-                    # Use upper 4 bits if lower 4 bits are 0, otherwise use lower 4 bits
-                    if button_lower == 0 and button_upper != 0:
-                        button = button_upper
-                        _LOGGER.debug(
-                            f"Type 0x10 button extraction: parameter=0x{parameter:02x}, using upper nibble, button={button}"
-                        )
-                    else:
-                        button = button_lower
-                        _LOGGER.debug(
-                            f"Type 0x10 button extraction: parameter=0x{parameter:02x}, using lower nibble, button={button}"
-                        )
+                    raw_nibble = (
+                        button_upper
+                        if (button_lower == 0 and button_upper != 0)
+                        else button_lower
+                    )
+                    button = (raw_nibble % 4) + 1
+                    _LOGGER.debug(
+                        f"Type 0x10 button extraction: parameter=0x{parameter:02x}, raw_nibble={raw_nibble}, button={button}"
+                    )
 
                     # For type 0x10 messages, we need to pass additional data beyond the declared payload
                     # Extend to include at least 10 bytes from message start for state byte
