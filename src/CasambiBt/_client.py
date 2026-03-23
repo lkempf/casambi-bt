@@ -19,8 +19,6 @@ from bleak_retry_connector import (
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric import ec
 
-from CasambiBt._switch import parseSwitchEvents
-
 from ._constants import (
     CASA_AUTH_CHAR_UUID,
     MAX_VERSION,
@@ -30,6 +28,7 @@ from ._constants import (
 )
 from ._encryption import Encryptor
 from ._network import Network
+from ._switch_events import SwitchEventStreamDecoder
 
 # We need to move these imports here to prevent a cycle.
 from .errors import (  # noqa: E402
@@ -74,6 +73,7 @@ class CasambiClient:
             else address_or_device
         )
         self._logger = logging.getLogger(__name__)
+        self._switchDecoder = SwitchEventStreamDecoder(self._logger)
         self._connectionState: ConnectionState = ConnectionState.NONE
         self._dataCallback = dataCallback
         self._disconnectedCallback = disonnectedCallback
@@ -450,10 +450,9 @@ class CasambiClient:
         if packetType == IncomingPacketType.UnitState:
             self._parseUnitStates(decrypted_data[1:])
         elif packetType == IncomingPacketType.SwitchEvent:
-            for s in parseSwitchEvents(
+            self._parseSwitchEvent(
                 decrypted_data[1:], self._inPacketCount, raw_encrypted_packet
-            ):
-                self._dataCallback(IncomingPacketType.SwitchEvent, s)
+            )
         elif packetType == IncomingPacketType.NetworkConfig:
             # We don't care about the config the network thinks it has.
             # We assume that cloud config and local config match.
@@ -506,6 +505,53 @@ class CasambiClient:
             self._logger.error(
                 f"Ran out of data while parsing unit state! Remaining data {b2a(data[oldPos:])} in {b2a(data)}."
             )
+
+    def _parseSwitchEvent(
+        self, data: bytes, packet_seq: int = None, raw_packet: bytes = None
+    ) -> None:
+        """Parse decrypted packet type=7 payload (INVOCATION stream).
+
+        Ground truth: casambi-android `v1.C1775b.Q(Q2.h)` parses decrypted packet type=7
+        as a stream of INVOCATION frames. Switch button events are INVOCATIONs.
+        """
+
+        if self._logger.isEnabledFor(logging.DEBUG):
+            data_hex = b2a(data)
+            self._logger.debug(
+                "Parsing incoming switch event packet #%s... Data: %s",
+                packet_seq,
+                data_hex,
+            )
+            self._logger.debug(
+                "[CASAMBI_SWITCH_PACKET] Full data #%s: hex=%s len=%d",
+                packet_seq,
+                data_hex,
+                len(data),
+            )
+
+        events, stats = self._switchDecoder.decode(
+            data,
+            packet_seq=packet_seq,
+            raw_packet=raw_packet,
+            arrival_sequence=self._inPacketCount,
+        )
+
+        self._logger.debug(
+            "[CASAMBI_SWITCH_SUMMARY] packet=%s frames=%d button_frames=%d input_frames=%d ignored=%d emitted=%d suppressed_same_state=%d",
+            packet_seq,
+            stats.frames_total,
+            stats.frames_button,
+            stats.frames_input,
+            stats.frames_ignored,
+            stats.events_emitted,
+            stats.events_suppressed_same_state,
+        )
+
+        for ev in events:
+            # Back-compat alias: older consumers looked for 'flags'
+            if "flags" not in ev:
+                ev["flags"] = ev.get("invocation_flags")
+            self._dataCallback(IncomingPacketType.SwitchEvent, ev)
 
     async def disconnect(self) -> None:
         self._logger.info("Disconnecting...")
