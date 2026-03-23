@@ -468,7 +468,7 @@ class Casambi:
         The handler is supplied with a dictionary containing (at minimum):
         - unit_id: target unit id (from INVOCATION target high byte)
         - button: best-effort "label" (typically 1..4 for 4-gang switches)
-        - event: "button_press" | "button_release" | "input_event"
+        - event: "button_press" | "button_release" | "button_hold" | "button_release_after_hold" | "input_event"
 
         Switch events are parsed from decrypted packet type=7 (INVOCATION stream),
         matching casambi-android `v1.C1775b.Q(Q2.h)`. Extra diagnostic keys include:
