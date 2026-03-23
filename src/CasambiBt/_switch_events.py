@@ -8,7 +8,6 @@ from typing import Any, Final
 
 from ._invocation import InvocationFrame, parse_invocation_stream
 
-
 _BUTTON_EVENT_MIN: Final[int] = 29  # FunctionButtonEvent0
 _BUTTON_EVENT_MAX: Final[int] = 36  # FunctionButtonEvent7
 _INPUT_EVENT_MIN: Final[int] = 64  # FunctionNotifyInput0
@@ -191,7 +190,14 @@ class SwitchEventStreamDecoder:
                 "raw_packet": b2a(raw_packet) if raw_packet else None,
                 "decrypted_data": b2a(data),
                 "frame_hex": b2a(
-                    data[frame.offset : frame.offset + (9 + (1 if frame.origin_handle is not None else 0) + frame.payload_len)]
+                    data[
+                        frame.offset : frame.offset
+                        + (
+                            9
+                            + (1 if frame.origin_handle is not None else 0)
+                            + frame.payload_len
+                        )
+                    ]
                 ),
                 "received_at": time.time(),
             }
@@ -231,7 +237,10 @@ class SwitchEventStreamDecoder:
             input_mapped_event = mapped_event
 
             # Avoid duplicating press/release for wireless switches that also produce the real button stream.
-            if mapped_event in ("button_press", "button_release") and (unit_id, button) in self._button_stream_seen:
+            if (
+                mapped_event in ("button_press", "button_release")
+                and (unit_id, button) in self._button_stream_seen
+            ):
                 mapped_event = None
 
             if mapped_event is not None and input_code is not None:

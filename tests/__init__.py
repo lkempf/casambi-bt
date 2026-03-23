@@ -1,2 +1,1 @@
-# Intentionally empty. (Allows `python -m unittest` discovery.)
-
+"""Test package for log-driven switch parser coverage."""

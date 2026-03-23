@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import platform
 import struct
 from binascii import b2a_hex as b2a
 from collections.abc import Callable
@@ -39,6 +38,7 @@ from .errors import (  # noqa: E402
     ProtocolError,
     UnsupportedProtocolVersion,
 )
+
 
 class CasambiClient:
     def __init__(
@@ -116,33 +116,6 @@ class CasambiClient:
             if isinstance(self._address_or_devive, BLEDevice)
             else await get_device(self.address)
         )
-
-        if not device and isinstance(self._address_or_devive, str) and platform.system() == "Darwin":
-            # macOS CoreBluetooth typically reports random per-device identifiers as addresses
-            # unless `use_bdaddr` is enabled. Our `discover()` uses that flag so try it here.
-            try:
-                from ._discover import discover as discover_networks  # local import to avoid cycles
-
-                networks = await discover_networks()
-                wanted = self.address.replace(":", "").lower()
-                for d in networks:
-                    if d.address.replace(":", "").lower() == wanted:
-                        device = d
-                        break
-
-                if not device:
-                    self._logger.warning(
-                        "macOS BLE lookup by address failed. Discovered %d Casambi networks, but none match %s. Discovered=%s",
-                        len(networks),
-                        self.address,
-                        [d.address for d in networks[:10]],
-                    )
-            except Exception:
-                self._logger.debug(
-                    "macOS fallback discovery failed while trying to find %s.",
-                    self.address,
-                    exc_info=True,
-                )
 
         if not device:
             self._logger.error("Failed to discover client.")
@@ -490,65 +463,36 @@ class CasambiClient:
             self._logger.info(f"Packet type {packetType} not implemented. Ignoring!")
 
     def _parseUnitStates(self, data: bytes) -> None:
-        # Ground truth: casambi-android `v1.C1775b.V(Q2.h)` parses decrypted packet type=6
-        # as a stream of unit state records. Records have optional bytes depending on flags.
         self._logger.info("Parsing incoming unit states...")
-        self._logger.debug("Incoming unit state: %s", b2a(data))
+        self._logger.debug(f"Incoming unit state: {b2a(data)}")
 
         pos = 0
         oldPos = 0
         try:
-            # Android uses `while (available() >= 4)` as the loop condition.
             while pos <= len(data) - 4:
-                unit_id = data[pos]
+                id = data[pos]
                 flags = data[pos + 1]
-                b8 = data[pos + 2]
-                state_len = ((b8 >> 4) & 0x0F) + 1
-                prio = b8 & 0x0F
+                stateLen = ((data[pos + 2] >> 4) & 15) + 1
+                prio = data[pos + 2] & 15
                 pos += 3
 
-                online = (flags & 0x02) != 0
-                on = (flags & 0x01) != 0
+                online = flags & 2 != 0
+                on = flags & 1 != 0
 
-                con: int | None = None
-                sid: int | None = None
+                if flags & 4:
+                    pos += 1  # TODO: con?
+                if flags & 8:
+                    pos += 1  # TODO: sid?
+                if flags & 16:
+                    pos += 1  # Unkown value
 
-                # Optional bytes, matching Android:
-                # - flags&0x04: con (1 byte)
-                # - flags&0x08: sid (1 byte)
-                # - flags&0x10: extra byte; if missing Android uses 0xFF
-                if flags & 0x04:
-                    con = data[pos]
-                    pos += 1
-                if flags & 0x08:
-                    sid = data[pos]
-                    pos += 1
+                state = data[pos : pos + stateLen]
+                pos += stateLen
 
-                if flags & 0x10:
-                    extra_byte = data[pos]
-                    pos += 1
-                else:
-                    extra_byte = 0xFF
-
-                state = data[pos : pos + state_len]
-                pos += state_len
-
-                padding_len = (flags >> 6) & 0x03
-                padding = data[pos : pos + padding_len] if padding_len else b""
-                pos += padding_len
+                pos += (flags >> 6) & 3  # Padding?
 
                 self._logger.debug(
-                    "[CASAMBI_UNITSTATE_PARSED] unit=%d flags=0x%02x prio=%d online=%s on=%s con=%s sid=%s extra_byte=%d state=%s padding=%s",
-                    unit_id,
-                    flags,
-                    prio,
-                    online,
-                    on,
-                    con,
-                    sid,
-                    extra_byte,
-                    b2a(state),
-                    b2a(padding),
+                    f"Parsed state: Id {id}, prio {prio}, online {online}, on {on}, state {b2a(state)}1"
                 )
 
                 self._dataCallback(
@@ -559,9 +503,7 @@ class CasambiClient:
                 oldPos = pos
         except IndexError:
             self._logger.error(
-                "Ran out of data while parsing unit state! Remaining data %s in %s.",
-                b2a(data[oldPos:]),
-                b2a(data),
+                f"Ran out of data while parsing unit state! Remaining data {b2a(data[oldPos:])} in {b2a(data)}."
             )
 
     def _parseSwitchEvent(
@@ -610,6 +552,7 @@ class CasambiClient:
             if "flags" not in ev:
                 ev["flags"] = ev.get("invocation_flags")
             self._dataCallback(IncomingPacketType.SwitchEvent, ev)
+
     async def disconnect(self) -> None:
         self._logger.info("Disconnecting...")
 

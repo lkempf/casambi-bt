@@ -113,4 +113,3 @@ def parse_invocation_stream(
         )
 
     return frames
-

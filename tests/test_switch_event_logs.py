@@ -1,3 +1,5 @@
+"""Regression tests for switch event decoding based on captured logs."""
+
 from __future__ import annotations
 
 import re
@@ -10,7 +12,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from CasambiBt._switch_events import SwitchEventStreamDecoder  # noqa: E402
-
 
 _HEX_RE = re.compile(r"b'([0-9a-fA-F]+)'")
 
@@ -52,7 +53,11 @@ def _extract_switch_payloads_from_log(log_path: Path) -> list[bytes]:
 
 
 class TestSwitchEventsFromLogs(unittest.TestCase):
+    """Validate switch event decoding against captured payloads."""
+
     def test_wired_unit20_button1_single_press(self) -> None:
+        """Decode a wired single press into one press and one release."""
+
         repo_root = Path(__file__).resolve().parents[2]
         log_path = repo_root / "testlogs" / "single_press_wired_unit_20_button_1.log"
         payloads = _extract_switch_payloads_from_log(log_path)
@@ -64,14 +69,28 @@ class TestSwitchEventsFromLogs(unittest.TestCase):
             evs, _ = dec.decode(p)
             events.extend(evs)
 
-        semantic = [e for e in events if e.get("event") in ("button_press", "button_release", "button_hold", "button_release_after_hold")]
-        self.assertEqual([e["event"] for e in semantic], ["button_press", "button_release"])
+        semantic = [
+            e
+            for e in events
+            if e.get("event")
+            in (
+                "button_press",
+                "button_release",
+                "button_hold",
+                "button_release_after_hold",
+            )
+        ]
+        self.assertEqual(
+            [e["event"] for e in semantic], ["button_press", "button_release"]
+        )
         self.assertEqual(semantic[0]["unit_id"], 20)
         self.assertEqual(semantic[0]["button"], 1)
         self.assertEqual(semantic[1]["unit_id"], 20)
         self.assertEqual(semantic[1]["button"], 1)
 
     def test_wired_unit20_button1_long_press(self) -> None:
+        """Decode wired long presses that end with release-after-hold."""
+
         repo_root = Path(__file__).resolve().parents[2]
         for fname in (
             "long_press_wired_unit_20_button_1.log",
@@ -79,7 +98,9 @@ class TestSwitchEventsFromLogs(unittest.TestCase):
         ):
             log_path = repo_root / "testlogs" / fname
             payloads = _extract_switch_payloads_from_log(log_path)
-            self.assertGreater(len(payloads), 0, f"No switch payloads extracted from {fname}.")
+            self.assertGreater(
+                len(payloads), 0, f"No switch payloads extracted from {fname}."
+            )
 
             dec = SwitchEventStreamDecoder()
             events: list[dict] = []
@@ -87,15 +108,30 @@ class TestSwitchEventsFromLogs(unittest.TestCase):
                 evs, _ = dec.decode(p)
                 events.extend(evs)
 
-            semantic = [e for e in events if e.get("event") in ("button_press", "button_release", "button_hold", "button_release_after_hold")]
+            semantic = [
+                e
+                for e in events
+                if e.get("event")
+                in (
+                    "button_press",
+                    "button_release",
+                    "button_hold",
+                    "button_release_after_hold",
+                )
+            ]
             # Wired long press reports release-after-hold (0x0c), not a separate hold stream in samples.
-            self.assertEqual([e["event"] for e in semantic], ["button_press", "button_release_after_hold"])
+            self.assertEqual(
+                [e["event"] for e in semantic],
+                ["button_press", "button_release_after_hold"],
+            )
             self.assertEqual(semantic[0]["unit_id"], 20)
             self.assertEqual(semantic[0]["button"], 1)
             self.assertEqual(semantic[1]["unit_id"], 20)
             self.assertEqual(semantic[1]["button"], 1)
 
     def test_wireless_unit31_button3_single_press(self) -> None:
+        """Suppress retransmits for a wireless single-press capture."""
+
         repo_root = Path(__file__).resolve().parents[2]
         log_path = repo_root / "testlogs" / "single_press_wireless_unit_31_button_3.log"
         payloads = _extract_switch_payloads_from_log(log_path)
@@ -107,17 +143,27 @@ class TestSwitchEventsFromLogs(unittest.TestCase):
             evs, _ = dec.decode(p)
             events.extend(evs)
 
-        btn_events = [e for e in events if e.get("event") in ("button_press", "button_release")]
+        btn_events = [
+            e for e in events if e.get("event") in ("button_press", "button_release")
+        ]
         # After correct INVOCATION parsing + same-state suppression, this becomes one press + one release.
-        self.assertEqual([e["event"] for e in btn_events], ["button_press", "button_release"])
+        self.assertEqual(
+            [e["event"] for e in btn_events], ["button_press", "button_release"]
+        )
         self.assertEqual(btn_events[0]["unit_id"], 31)
         self.assertEqual(btn_events[0]["button"], 3)
         self.assertEqual(btn_events[1]["unit_id"], 31)
         self.assertEqual(btn_events[1]["button"], 3)
 
     def test_wireless_unit31_button1_long_press_then_release(self) -> None:
+        """Decode a wireless long press without duplicate adjacent states."""
+
         repo_root = Path(__file__).resolve().parents[2]
-        log_path = repo_root / "testlogs" / "long_press_then_release_wireless_unit_31_button_1.log"
+        log_path = (
+            repo_root
+            / "testlogs"
+            / "long_press_then_release_wireless_unit_31_button_1.log"
+        )
         payloads = _extract_switch_payloads_from_log(log_path)
         self.assertGreater(len(payloads), 0, "No switch payloads extracted from log.")
 
@@ -127,11 +173,23 @@ class TestSwitchEventsFromLogs(unittest.TestCase):
             evs, _ = dec.decode(p)
             events.extend(evs)
 
-        semantic = [e for e in events if e.get("event") in ("button_press", "button_release", "button_hold", "button_release_after_hold")]
+        semantic = [
+            e
+            for e in events
+            if e.get("event")
+            in (
+                "button_press",
+                "button_release",
+                "button_hold",
+                "button_release_after_hold",
+            )
+        ]
         # Long press: press, (optional hold), release, (optional release-after-hold from input stream)
         self.assertGreaterEqual(len(semantic), 2)
         self.assertEqual(semantic[0]["event"], "button_press")
-        self.assertIn(semantic[-1]["event"], ("button_release", "button_release_after_hold"))
+        self.assertIn(
+            semantic[-1]["event"], ("button_release", "button_release_after_hold")
+        )
         self.assertEqual(semantic[0]["unit_id"], 31)
         self.assertEqual(semantic[0]["button"], 1)
         self.assertEqual(semantic[-1]["unit_id"], 31)
@@ -142,6 +200,8 @@ class TestSwitchEventsFromLogs(unittest.TestCase):
             self.assertNotEqual(prev["event"], cur["event"])
 
     def test_android_capture_button_label_mapping(self) -> None:
+        """Match Android capture labels for 4-gang button indices."""
+
         repo_root = Path(__file__).resolve().parents[2]
 
         # u32-b1.log should decode as button 1 press+release.
@@ -152,8 +212,12 @@ class TestSwitchEventsFromLogs(unittest.TestCase):
         for p in payloads_b1:
             evs, _ = dec1.decode(p)
             events_b1.extend(evs)
-        btn_b1 = [e for e in events_b1 if e.get("event") in ("button_press", "button_release")]
-        self.assertEqual([e["event"] for e in btn_b1[:2]], ["button_press", "button_release"])
+        btn_b1 = [
+            e for e in events_b1 if e.get("event") in ("button_press", "button_release")
+        ]
+        self.assertEqual(
+            [e["event"] for e in btn_b1[:2]], ["button_press", "button_release"]
+        )
         self.assertEqual(btn_b1[0]["unit_id"], 32)
         self.assertEqual(btn_b1[0]["button"], 1)
         self.assertEqual(btn_b1[0]["button_event_index"], 1)
@@ -166,13 +230,19 @@ class TestSwitchEventsFromLogs(unittest.TestCase):
         for p in payloads_b4:
             evs, _ = dec4.decode(p)
             events_b4.extend(evs)
-        btn_b4 = [e for e in events_b4 if e.get("event") in ("button_press", "button_release")]
-        self.assertEqual([e["event"] for e in btn_b4[:2]], ["button_press", "button_release"])
+        btn_b4 = [
+            e for e in events_b4 if e.get("event") in ("button_press", "button_release")
+        ]
+        self.assertEqual(
+            [e["event"] for e in btn_b4[:2]], ["button_press", "button_release"]
+        )
         self.assertEqual(btn_b4[0]["unit_id"], 32)
         self.assertEqual(btn_b4[0]["button"], 4)
         self.assertEqual(btn_b4[0]["button_event_index"], 0)
 
     def test_notify_input_fields_are_exposed(self) -> None:
+        """Expose raw NotifyInput fields for downstream diagnostics."""
+
         repo_root = Path(__file__).resolve().parents[2]
         log_path = repo_root / "testlogs" / "another_wireless_single_press.log"
         payloads = _extract_switch_payloads_from_log(log_path)
@@ -189,7 +259,9 @@ class TestSwitchEventsFromLogs(unittest.TestCase):
         notify = [
             e
             for e in events
-            if e.get("target_type") == 0x12 and e.get("opcode") == 0x41 and e.get("payload_hex") == b"0209"
+            if e.get("target_type") == 0x12
+            and e.get("opcode") == 0x41
+            and e.get("payload_hex") == b"0209"
         ]
         self.assertGreaterEqual(len(notify), 1)
         e0 = notify[0]

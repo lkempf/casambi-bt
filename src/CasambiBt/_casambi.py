@@ -392,7 +392,7 @@ class Casambi:
     ) -> None:
         self._logger.info(f"Incomming data callback of type {packetType}")
         if packetType == IncomingPacketType.UnitState:
-            unitData = cast(dict[str, Any], data)
+            unitData = data
             self._logger.debug(
                 f"Handling changed state {b2a(unitData['state'])} for unit {unitData['id']}"
             )
@@ -420,7 +420,7 @@ class Casambi:
                     f"Changed state notification for unkown unit {unitData['id']}"
                 )
         elif packetType == IncomingPacketType.SwitchEvent:
-            switchData = cast(dict[str, Any], data)
+            switchData = data
             self._logger.debug(
                 f"Handling switch event: unit_id={switchData.get('unit_id')}, "
                 f"button={switchData.get('button')}, event={switchData.get('event')}"
