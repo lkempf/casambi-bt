@@ -72,6 +72,9 @@ class Network:
             if await (cachePath / SESSION_CACHE_FILE).exists():
                 sessionData = await (cachePath / SESSION_CACHE_FILE).read_bytes()
                 self._session = pickle.loads(sessionData)
+                # Migrate naive datetime from caches created before UTC-aware datetimes
+                if self._session.expires.tzinfo is None:
+                    self._session.expires = self._session.expires.replace(tzinfo=UTC)
                 self._logger.info("Session loaded.")
 
     async def _saveSesion(self) -> None:
@@ -86,6 +89,11 @@ class Network:
             if await (cachePath / TYPES_CACHE_FILE).exists():
                 typeData = await (cachePath / TYPES_CACHE_FILE).read_bytes()
                 self._unitTypes = pickle.loads(typeData)
+                # Migrate naive datetimes from caches created before UTC-aware datetimes
+                self._unitTypes = {
+                    k: (t, dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt)
+                    for k, (t, dt) in self._unitTypes.items()
+                }
                 self._logger.info("Unit type cache loaded.")
 
     async def _saveTypeCache(self) -> None:
