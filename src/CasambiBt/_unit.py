@@ -12,7 +12,7 @@ _LOGGER = logging.getLogger(__name__)
 class _DeprecatingMeta(EnumMeta):
     """EnumMeta subclass that emits a DeprecationWarning for the UNKOWN typo alias."""
 
-    def __getattr__(cls, name: str):
+    def __getattr__(cls, name: str) -> "UnitControlType":
         if name == "UNKOWN":
             warnings.warn(
                 "UnitControlType.UNKOWN is a typo and deprecated — use UNKNOWN instead. "
@@ -21,7 +21,7 @@ class _DeprecatingMeta(EnumMeta):
                 stacklevel=2,
             )
             return cls.UNKNOWN
-        return super().__getattr__(name)
+        raise AttributeError(f"'{cls.__name__}' has no attribute '{name}'")
 
 
 # Numbers are totally arbitrary so far.
