@@ -348,7 +348,9 @@ def test_unkown_alias_emits_deprecation_warning() -> None:
     """Accessing UNKOWN raises DeprecationWarning and returns the UNKNOWN member."""
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        alias = UnitControlType.UNKOWN  # noqa: F841 — intentionally testing deprecated access
+        alias = (
+            UnitControlType.UNKOWN
+        )  # noqa: F841 — intentionally testing deprecated access
     assert len(caught) == 1
     assert issubclass(caught[0].category, DeprecationWarning)
     assert "UNKOWN" in str(caught[0].message)
