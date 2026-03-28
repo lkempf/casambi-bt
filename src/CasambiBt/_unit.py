@@ -1,16 +1,32 @@
 import logging
+import warnings
 from binascii import b2a_hex as b2a
 from colorsys import hsv_to_rgb, rgb_to_hsv
 from dataclasses import dataclass, field
-from enum import Enum, unique
+from enum import Enum, EnumMeta, unique
 from typing import Final
 
 _LOGGER = logging.getLogger(__name__)
 
 
+class _DeprecatingMeta(EnumMeta):
+    """EnumMeta subclass that emits a DeprecationWarning for the UNKOWN typo alias."""
+
+    def __getattr__(cls, name: str):
+        if name == "UNKOWN":
+            warnings.warn(
+                "UnitControlType.UNKOWN is a typo and deprecated — use UNKNOWN instead. "
+                "Will be removed in a future release.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            return cls.UNKNOWN
+        return super().__getattr__(name)
+
+
 # Numbers are totally arbitrary so far.
 @unique
-class UnitControlType(Enum):
+class UnitControlType(Enum, metaclass=_DeprecatingMeta):
     """All implemented control types."""
 
     DIMMER = 0
@@ -43,8 +59,11 @@ class UnitControlType(Enum):
     SENSOR = 9
     """A sensor value of the light."""
 
-    UNKOWN = 99
-    """State isn't implemented. Control saved for debuggin purposes."""
+    UNIMPLEMENTED = 98
+    """Control type exists in the protocol but is not yet implemented in this library."""
+
+    UNKNOWN = 99
+    """Control type is explicitly unknown in the protocol (e.g. used for sensor data)."""
 
 
 @unique
@@ -139,7 +158,7 @@ class UnitState:
         """Return a copy of the list of unknown controls parsed from the last state update.
 
         Each entry is a tuple of ``(bit_offset, bit_length, value)`` corresponding to a
-        control whose type is :attr:`UnitControlType.UNKOWN`.
+        control whose type is :attr:`UnitControlType.UNKNOWN`.
         """
         return list(self._unknown_controls)
 
@@ -148,7 +167,7 @@ class UnitState:
         """Return sensor readings keyed by element name from the unit type mode string.
 
         Populated for units whose mode string contains a ``{Name1,Name2,...}`` pattern
-        and whose unrecognised (UNKOWN) controls map to those names in order.
+        and whose unrecognised (UNKNOWN) controls map to those names in order.
         Returns a copy; empty for all other unit types.
         """
         return dict(self._sensors)
@@ -620,16 +639,16 @@ class Unit:
                 _LOGGER.debug(
                     f"Sensor control at {c.offset}: {cInt}. Unit type is {self.unitType.id}."
                 )
-            elif c.type == UnitControlType.UNKOWN:
+            elif c.type == UnitControlType.UNKNOWN:
                 # Might be useful for implementing more state types
                 _LOGGER.debug(
-                    f"Value for unkown control type at {c.offset}: {cInt}. Unit type is {self.unitType.id}."
+                    f"Value for unknown control type at {c.offset}: {cInt}. Unit type is {self.unitType.id}."
                 )
-                unkown_index = len(self._state._unknown_controls)
+                unknown_index = len(self._state._unknown_controls)
                 self._state._unknown_controls.append((c.offset, c.length, cInt))
                 names = self.unitType.element_names
-                if unkown_index < len(names):
-                    self._state._sensors[names[unkown_index]] = cInt
+                if unknown_index < len(names):
+                    self._state._sensors[names[unknown_index]] = cInt
 
         # For EXT/Elements multiplexed sensor platforms, decode the packet header
         # and accumulate per-type readings in sensor_cache across successive packets.

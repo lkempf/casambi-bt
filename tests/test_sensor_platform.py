@@ -1,5 +1,7 @@
 """Tests for sensor platform support: element_names, UnitState.sensors, Unit.sensor_cache."""
 
+import warnings
+
 from CasambiBt._unit import Unit, UnitControl, UnitControlType, UnitType
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -107,23 +109,23 @@ def test_element_names_empty_braces() -> None:
     assert ut.element_names == []
 
 
-# ── UnitState.sensors (DALI-2 style: UNKOWN controls + element names) ──────────
+# ── UnitState.sensors (DALI-2 style: UNKNOWN controls + element names) ─────────
 
 
-def test_sensors_populated_from_unkown_controls() -> None:
-    """UNKOWN controls are keyed by element name when mode has element_names."""
+def test_sensors_populated_from_unknown_controls() -> None:
+    """UNKNOWN controls are keyed by element name when mode has element_names."""
     # Simulate DALI-2: 2 UNKOWN controls at offsets 0 and 2 (2 bits presence + 12 bits lux)
     unit = _make_unit(
         controls=[
             UnitControl(
-                type=UnitControlType.UNKOWN,
+                type=UnitControlType.UNKNOWN,
                 offset=0,
                 length=2,
                 default=0,
                 readonly=True,
             ),
             UnitControl(
-                type=UnitControlType.UNKOWN,
+                type=UnitControlType.UNKNOWN,
                 offset=2,
                 length=12,
                 default=0,
@@ -143,18 +145,18 @@ def test_sensors_populated_from_unkown_controls() -> None:
 
 
 def test_sensors_partial_names() -> None:
-    """Only UNKOWN controls with a corresponding element name get a key; extras go to unknown_controls only."""
+    """Only UNKNOWN controls with a corresponding element name get a key; extras go to unknown_controls only."""
     unit = _make_unit(
         controls=[
             UnitControl(
-                type=UnitControlType.UNKOWN,
+                type=UnitControlType.UNKNOWN,
                 offset=0,
                 length=8,
                 default=0,
                 readonly=True,
             ),
             UnitControl(
-                type=UnitControlType.UNKOWN,
+                type=UnitControlType.UNKNOWN,
                 offset=8,
                 length=8,
                 default=0,
@@ -175,7 +177,7 @@ def test_sensors_empty_without_element_names() -> None:
     unit = _make_unit(
         controls=[
             UnitControl(
-                type=UnitControlType.UNKOWN,
+                type=UnitControlType.UNKNOWN,
                 offset=0,
                 length=8,
                 default=0,
@@ -197,7 +199,7 @@ def test_sensors_reset_each_call() -> None:
     unit = _make_unit(
         controls=[
             UnitControl(
-                type=UnitControlType.UNKOWN,
+                type=UnitControlType.UNKNOWN,
                 offset=0,
                 length=8,
                 default=0,
@@ -220,7 +222,7 @@ def test_sensors_returns_copy() -> None:
     unit = _make_unit(
         controls=[
             UnitControl(
-                type=UnitControlType.UNKOWN,
+                type=UnitControlType.UNKNOWN,
                 offset=0,
                 length=8,
                 default=0,
@@ -337,3 +339,48 @@ def test_sensor_cache_returns_copy() -> None:
     copy = unit.sensor_cache
     copy[0] = 99
     assert unit.sensor_cache[0] == 1
+
+
+# ── UnitControlType.UNKOWN deprecation + UNIMPLEMENTED distinction ──────────────
+
+
+def test_unkown_alias_emits_deprecation_warning() -> None:
+    """Accessing UNKOWN raises DeprecationWarning and returns the UNKNOWN member."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        alias = UnitControlType.UNKOWN  # noqa: F841 — intentionally testing deprecated access
+    assert len(caught) == 1
+    assert issubclass(caught[0].category, DeprecationWarning)
+    assert "UNKOWN" in str(caught[0].message)
+    assert alias is UnitControlType.UNKNOWN
+
+
+def test_unimplemented_not_in_unknown_controls() -> None:
+    """UNIMPLEMENTED controls are NOT included in unknown_controls or sensors."""
+    unit = _make_unit(
+        controls=[
+            UnitControl(
+                type=UnitControlType.UNIMPLEMENTED,
+                offset=0,
+                length=8,
+                default=0,
+                readonly=True,
+            ),
+            UnitControl(
+                type=UnitControlType.UNKNOWN,
+                offset=8,
+                length=8,
+                default=0,
+                readonly=True,
+            ),
+        ],
+        state_length=2,
+        mode="DALI Sensor{Sensor1}",
+    )
+    unit.setStateFromBytes(b"\x0a\x0b")
+    assert unit.state is not None
+    # Only the UNKNOWN control appears in unknown_controls
+    assert len(unit.state.unknown_controls) == 1
+    assert unit.state.unknown_controls[0] == (8, 8, 0x0B)
+    # And sensors only maps the UNKNOWN control
+    assert unit.state.sensors == {"Sensor1": 0x0B}

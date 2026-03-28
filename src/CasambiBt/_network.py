@@ -365,7 +365,7 @@ class Network:
                 self._logger.warning(
                     f"Unsupported control mode {typeStr} in fixture {id}."
                 )
-                type = UnitControlType.UNKOWN
+                type = UnitControlType.UNIMPLEMENTED
 
             controlObj = UnitControl(
                 type,
