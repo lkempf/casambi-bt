@@ -85,6 +85,35 @@ def mock_xy_unit():
 
 
 @pytest.fixture
+def mock_wcb_unit():
+    control = UnitControl(
+        type=UnitControlType.WHITECOLORBALANCE,
+        offset=0,
+        length=6,
+        default=0,
+        readonly=False,
+    )
+    unit_type = UnitType(
+        id=3,
+        model="Model",
+        manufacturer="Casambi",
+        mode="Mode",
+        stateLength=1,
+        controls=[control],
+    )
+    unit = Unit(
+        _typeId=3,
+        deviceId=12,
+        uuid="uuid3",
+        address="addr3",
+        name="Unit 3",
+        firmwareVersion="1.0",
+        unitType=unit_type,
+    )
+    return unit
+
+
+@pytest.fixture
 def mock_group(mock_unit):
     return Group(groudId=20, name="Group 1", units=[mock_unit])
 
@@ -496,3 +525,30 @@ async def test_set_control_value_preserves_other_bytes(connected_casambi):
     pkt = args[0]
     assert pkt[-2] == 0x42  # dimmer updated
     assert pkt[-1] == 0xC8  # white unchanged
+
+
+async def test_set_white_color_balance_valid(connected_casambi, mock_wcb_unit):
+    """setWhiteColorBalance sends the correct raw value in the packet."""
+    connected_casambi._casaNetwork.units.append(mock_wcb_unit)
+    mock_wcb_unit.setStateFromBytes(b"\x00")
+
+    await connected_casambi.setWhiteColorBalance(mock_wcb_unit, 42)
+
+    connected_casambi._casaClient.send.assert_called_once()
+    args, _ = connected_casambi._casaClient.send.call_args
+    pkt = args[0]
+    assert pkt[-1] & 0x3F == 42
+
+
+async def test_set_white_color_balance_invalid_range(connected_casambi, mock_wcb_unit):
+    """setWhiteColorBalance raises ValueError for out-of-range values."""
+    with pytest.raises(ValueError):
+        await connected_casambi.setWhiteColorBalance(mock_wcb_unit, -1)
+    with pytest.raises(ValueError):
+        await connected_casambi.setWhiteColorBalance(mock_wcb_unit, 64)
+
+
+async def test_set_white_color_balance_unsupported_unit(connected_casambi, mock_unit):
+    """setWhiteColorBalance raises ValueError when the unit has no WCB control."""
+    with pytest.raises(ValueError):
+        await connected_casambi.setWhiteColorBalance(mock_unit, 10)
