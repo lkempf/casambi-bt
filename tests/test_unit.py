@@ -560,3 +560,199 @@ def test_unit_state_unknown_controls_reset() -> None:
     controls = unit.state.unknown_controls
     assert len(controls) == 1
     assert controls[0][2] == 0x02
+
+
+def test_getStateAsBytes_preserves_unknown_control_current_value() -> None:
+    """getStateAsBytes re-uses the last received value for UNKNOWN controls."""
+    unit = _make_unit(
+        [
+            UnitControl(
+                type=UnitControlType.UNKNOWN,
+                offset=0,
+                length=8,
+                default=0,
+                readonly=False,
+            )
+        ],
+        state_length=1,
+    )
+
+    # Seed the unit with a known raw state — this stores value 0x2A in unknown_controls.
+    unit.setStateFromBytes(b"\x2a")
+
+    # Calling getStateAsBytes with an empty UnitState should NOT revert to default (0).
+    state = UnitState()
+    data = unit.getStateAsBytes(state)
+    assert data == b"\x2a"
+
+
+def test_getStateAsBytes_uses_default_when_no_state() -> None:
+    """getStateAsBytes falls back to control.default when there is no prior state."""
+    unit = _make_unit(
+        [
+            UnitControl(
+                type=UnitControlType.UNKNOWN,
+                offset=0,
+                length=8,
+                default=0xBE,
+                readonly=False,
+            )
+        ],
+        state_length=1,
+    )
+    # No setStateFromBytes called — _state is None.
+    state = UnitState()
+    data = unit.getStateAsBytes(state)
+    assert data == bytes([0xBE])
+
+
+# ---------------------------------------------------------------------------
+# WHITECOLORBALANCE tests
+# ---------------------------------------------------------------------------
+
+
+def test_unit_state_white_balance() -> None:
+    """white_balance range validation and del."""
+    state = UnitState()
+    assert state.white_balance is None
+
+    state.white_balance = 0
+    assert state.white_balance == 0
+
+    state.white_balance = 63
+    assert state.white_balance == 63
+
+    with pytest.raises(ValueError):
+        state.white_balance = -1
+
+    with pytest.raises(ValueError):
+        state.white_balance = 64
+
+    del state.white_balance
+    assert state.white_balance is None
+
+
+def test_setStateFromBytes_decodes_white_color_balance() -> None:
+    """setStateFromBytes populates white_balance for WHITECOLORBALANCE controls."""
+    unit = _make_unit(
+        [
+            UnitControl(
+                type=UnitControlType.WHITECOLORBALANCE,
+                offset=0,
+                length=6,
+                default=0,
+                readonly=False,
+            )
+        ],
+        state_length=1,
+    )
+
+    unit.setStateFromBytes(bytes([0x2A]))  # 0x2A = 42
+    assert unit.state is not None
+    assert unit.state.white_balance == 42
+
+
+def test_setStateFromBytes_resets_white_balance_on_each_call() -> None:
+    """white_balance is overwritten, not accumulated, on repeated calls."""
+    unit = _make_unit(
+        [
+            UnitControl(
+                type=UnitControlType.WHITECOLORBALANCE,
+                offset=0,
+                length=6,
+                default=0,
+                readonly=False,
+            )
+        ],
+        state_length=1,
+    )
+
+    unit.setStateFromBytes(bytes([10]))
+    unit.setStateFromBytes(bytes([20]))
+    assert unit.state is not None
+    assert unit.state.white_balance == 20
+
+
+def test_getStateAsBytes_writes_white_color_balance() -> None:
+    """getStateAsBytes encodes white_balance into the correct bits."""
+    unit = _make_unit(
+        [
+            UnitControl(
+                type=UnitControlType.WHITECOLORBALANCE,
+                offset=0,
+                length=6,
+                default=0,
+                readonly=False,
+            )
+        ],
+        state_length=1,
+    )
+
+    state = UnitState()
+    state.white_balance = 42
+    data = unit.getStateAsBytes(state)
+    assert data[0] & 0x3F == 42  # lower 6 bits
+
+
+def test_getStateAsBytes_preserves_white_balance_when_not_in_new_state() -> None:
+    """white_balance from the last received state is preserved when not set in the new UnitState."""
+    unit = _make_unit(
+        [
+            UnitControl(
+                type=UnitControlType.WHITECOLORBALANCE,
+                offset=0,
+                length=6,
+                default=0,
+                readonly=False,
+            )
+        ],
+        state_length=1,
+    )
+
+    unit.setStateFromBytes(bytes([31]))  # seed white_balance = 31
+
+    # New state does not set white_balance → should preserve 31
+    state = UnitState()
+    data = unit.getStateAsBytes(state)
+    assert data[0] & 0x3F == 31
+
+
+def test_getStateAsBytes_uses_wcb_default_when_no_current_state() -> None:
+    """Falls back to control.default when there is no prior state."""
+    unit = _make_unit(
+        [
+            UnitControl(
+                type=UnitControlType.WHITECOLORBALANCE,
+                offset=0,
+                length=6,
+                default=10,
+                readonly=False,
+            )
+        ],
+        state_length=1,
+    )
+
+    # No setStateFromBytes called
+    state = UnitState()
+    data = unit.getStateAsBytes(state)
+    assert data[0] & 0x3F == 10
+
+
+def test_white_color_balance_not_in_unknown_controls() -> None:
+    """WHITECOLORBALANCE values must not appear in unknown_controls."""
+    unit = _make_unit(
+        [
+            UnitControl(
+                type=UnitControlType.WHITECOLORBALANCE,
+                offset=0,
+                length=6,
+                default=0,
+                readonly=False,
+            )
+        ],
+        state_length=1,
+    )
+
+    unit.setStateFromBytes(bytes([42]))
+    assert unit.state is not None
+    assert unit.state.unknown_controls == []

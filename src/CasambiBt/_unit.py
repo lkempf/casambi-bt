@@ -59,6 +59,10 @@ class UnitControlType(Enum, metaclass=_DeprecatingMeta):
     SENSOR = 9
     """A sensor value of the light."""
 
+    WHITECOLORBALANCE = 10
+    """Cross-fade balance between the white and color channels (raw 6-bit value,
+    0 = pure white, 63 = pure color)."""
+
     UNIMPLEMENTED = 98
     """Control type exists in the protocol but is not yet implemented in this library."""
 
@@ -144,6 +148,7 @@ class UnitState:
         self._xy: tuple[float, float] | None = None
         self._slider: int | None = None
         self._onoff: bool | None = None
+        self._white_balance: int | None = None
         self._raw_state: bytes | None = None
         self._unknown_controls: list[tuple[int, int, int]] = []
         self._sensors: dict[str, int] = {}
@@ -340,6 +345,23 @@ class UnitState:
     @onoff.deleter
     def onoff(self) -> None:
         self._onoff = None
+
+    WCB_MIN: Final = 0
+    WCB_MAX: Final = 63
+
+    @property
+    def white_balance(self) -> int | None:
+        """Return the white/color balance raw value (0 = pure white, 63 = pure color), or None."""
+        return self._white_balance
+
+    @white_balance.setter
+    def white_balance(self, value: int) -> None:
+        self._check_range(value, self.WCB_MIN, self.WCB_MAX)
+        self._white_balance = value
+
+    @white_balance.deleter
+    def white_balance(self) -> None:
+        self._white_balance = None
 
     def __repr__(self) -> str:
         return f"UnitState(dimmer={self.dimmer}, vertical={self.vertical}, rgb={self.rgb.__repr__()}, white={self.white}, temperature={self.temperature}, colorsource={self.colorsource}, xy={self.xy}, slider={self.slider}, onoff={self.onoff})"
@@ -561,10 +583,36 @@ class Unit:
                 scaledValue = state.slider >> scale
             elif c.type == UnitControlType.ONOFF and state.onoff is not None:
                 scaledValue = 1 if state.onoff else 0
+            elif (
+                c.type == UnitControlType.WHITECOLORBALANCE
+                and state.white_balance is not None
+            ):
+                scaledValue = state.white_balance
 
-            # Use default if unsupported type or unset value in state
+            # Use default if unsupported type or unset value in state.
+            # For UNKNOWN controls: preserve the most recently received value
+            # so that a setControlValue() call does not silently reset controls
+            # the caller did not intend to change.
+            # For WHITECOLORBALANCE: preserve the last received value so that
+            # brightness / colour changes do not reset the balance.
             else:
-                scaledValue = c.default
+                if c.type == UnitControlType.UNKNOWN and self._state:
+                    scaledValue = next(
+                        (
+                            v
+                            for o, _l, v in self._state._unknown_controls
+                            if o == c.offset
+                        ),
+                        c.default,
+                    )
+                elif (
+                    c.type == UnitControlType.WHITECOLORBALANCE
+                    and self._state
+                    and self._state.white_balance is not None
+                ):
+                    scaledValue = self._state.white_balance
+                else:
+                    scaledValue = c.default
 
             values.append((c.offset, c.length, scaledValue))
 
@@ -635,6 +683,8 @@ class Unit:
                 self._state.slider = cInt << scale
             elif c.type == UnitControlType.ONOFF:
                 self._state.onoff = cInt != 0
+            elif c.type == UnitControlType.WHITECOLORBALANCE:
+                self._state.white_balance = cInt
             elif c.type == UnitControlType.SENSOR:
                 _LOGGER.debug(
                     f"Sensor control at {c.offset}: {cInt}. Unit type is {self.unitType.id}."
