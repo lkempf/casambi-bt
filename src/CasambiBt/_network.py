@@ -22,6 +22,13 @@ from .errors import (
 SESSION_CACHE_FILE: Final = "session.pck"
 TYPES_CACHE_FILE: Final = "types.pck"
 
+# Increment this whenever UnitType, UnitControl, or UnitControlType change in
+# a way that makes previously-pickled objects incompatible or incorrect.
+# On mismatch the types cache is discarded and all fixtures are re-fetched from
+# the Casambi API.  History:
+#   1 — initial versioned cache
+TYPES_CACHE_VERSION: Final = 1
+
 
 @dataclass()
 class _NetworkSession:
@@ -83,15 +90,38 @@ class Network:
     async def _loadTypeCache(self) -> None:
         self._logger.debug("Loading unit type cache...")
         async with self._cache as cachePath:
-            if await (cachePath / TYPES_CACHE_FILE).exists():
-                typeData = await (cachePath / TYPES_CACHE_FILE).read_bytes()
-                self._unitTypes = pickle.loads(typeData)
-                self._logger.info("Unit type cache loaded.")
+            cacheFile = cachePath / TYPES_CACHE_FILE
+            if await cacheFile.exists():
+                typeData = await cacheFile.read_bytes()
+                payload = pickle.loads(typeData)
+
+                # Versioned cache: payload is (version, dict).
+                # Unversioned legacy caches are plain dicts — treat as version 0.
+                if isinstance(payload, tuple) and len(payload) == 2:
+                    cached_version, unitTypes = payload
+                else:
+                    cached_version, unitTypes = 0, payload
+
+                if cached_version != TYPES_CACHE_VERSION:
+                    self._logger.warning(
+                        "Unit type cache version %d is outdated (expected %d). "
+                        "Discarding cache — fixtures will be re-fetched from the API.",
+                        cached_version,
+                        TYPES_CACHE_VERSION,
+                    )
+                    self._unitTypes = {}
+                    return
+
+                self._unitTypes = unitTypes
+                self._logger.info(
+                    "Unit type cache loaded (version %d).", cached_version
+                )
 
     async def _saveTypeCache(self) -> None:
         self._logger.debug("Saving type cache...")
         async with self._cache as cachePath:
-            typeData = pickle.dumps(self._unitTypes)
+            payload = (TYPES_CACHE_VERSION, self._unitTypes)
+            typeData = pickle.dumps(payload)
             await (cachePath / TYPES_CACHE_FILE).write_bytes(typeData)
 
     async def getNetworkId(self, forceOffline: bool = False) -> None:
