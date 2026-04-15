@@ -569,7 +569,11 @@ class Unit:
             else:
                 if c.type == UnitControlType.UNKNOWN and self._state:
                     scaledValue = next(
-                        (v for o, _l, v in self._state._unknown_controls if o == c.offset),
+                        (
+                            v
+                            for o, _l, v in self._state._unknown_controls
+                            if o == c.offset
+                        ),
                         c.default,
                     )
                 else:

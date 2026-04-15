@@ -494,5 +494,5 @@ async def test_set_control_value_preserves_other_bytes(connected_casambi):
 
     args, _ = connected_casambi._casaClient.send.call_args
     pkt = args[0]
-    assert pkt[-2] == 0x42   # dimmer updated
-    assert pkt[-1] == 0xC8   # white unchanged
+    assert pkt[-2] == 0x42  # dimmer updated
+    assert pkt[-1] == 0xC8  # white unchanged
