@@ -562,9 +562,22 @@ class Unit:
             elif c.type == UnitControlType.ONOFF and state.onoff is not None:
                 scaledValue = 1 if state.onoff else 0
 
-            # Use default if unsupported type or unset value in state
+            # Use default if unsupported type or unset value in state.
+            # For UNKNOWN controls: preserve the most recently received value
+            # so that a setControlValue() call does not silently reset controls
+            # the caller did not intend to change.
             else:
-                scaledValue = c.default
+                if c.type == UnitControlType.UNKNOWN and self._state:
+                    scaledValue = next(
+                        (
+                            v
+                            for o, _l, v in self._state._unknown_controls
+                            if o == c.offset
+                        ),
+                        c.default,
+                    )
+                else:
+                    scaledValue = c.default
 
             values.append((c.offset, c.length, scaledValue))
 

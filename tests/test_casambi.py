@@ -419,3 +419,80 @@ async def test_disconnect(connected_casambi):
     connected_casambi._casaClient.disconnect.assert_called_once()
     mock_network.disconnect.assert_called_once()
     assert connected_casambi._casaNetwork is None
+
+
+async def test_set_control_value_patches_bits(connected_casambi, mock_unit):
+    """setControlValue sends a packet with only the target bits changed."""
+    control = mock_unit.unitType.controls[0]  # DIMMER, offset=0, length=8
+
+    # Seed the unit with a known raw state
+    mock_unit.setStateFromBytes(b"\xaa")
+
+    await connected_casambi.setControlValue(mock_unit, control, 0x42)
+
+    connected_casambi._casaClient.send.assert_called_once()
+    args, _ = connected_casambi._casaClient.send.call_args
+    pkt = args[0]
+    assert pkt[-1] == 0x42
+
+
+async def test_set_control_value_no_state_uses_zeros(connected_casambi, mock_unit):
+    """setControlValue falls back to zero-filled bytes when there is no prior state."""
+    control = mock_unit.unitType.controls[0]  # DIMMER, offset=0, length=8
+    mock_unit._state = None
+
+    await connected_casambi.setControlValue(mock_unit, control, 0x55)
+
+    args, _ = connected_casambi._casaClient.send.call_args
+    pkt = args[0]
+    assert pkt[-1] == 0x55
+
+
+async def test_set_control_value_updates_unit_state(connected_casambi, mock_unit):
+    """After setControlValue the unit's state reflects the new value."""
+    control = mock_unit.unitType.controls[0]  # DIMMER, offset=0, length=8
+    mock_unit.setStateFromBytes(b"\x00")
+
+    await connected_casambi.setControlValue(mock_unit, control, 200)
+
+    assert mock_unit.state is not None
+    assert mock_unit.state.dimmer == 200
+
+
+async def test_set_control_value_preserves_other_bytes(connected_casambi):
+    """setControlValue only modifies the target bits; adjacent bytes stay unchanged."""
+    # Build a unit with two 8-bit controls: DIMMER at offset 0, WHITE at offset 8
+    controls = [
+        UnitControl(
+            type=UnitControlType.DIMMER, offset=0, length=8, default=0, readonly=False
+        ),
+        UnitControl(
+            type=UnitControlType.WHITE, offset=8, length=8, default=0, readonly=False
+        ),
+    ]
+    ut = UnitType(
+        id=99,
+        model="test",
+        manufacturer="test",
+        mode="test",
+        stateLength=2,
+        controls=controls,
+    )
+    unit = Unit(
+        _typeId=99,
+        deviceId=99,
+        uuid="x",
+        address="x",
+        name="x",
+        firmwareVersion="1",
+        unitType=ut,
+    )
+    unit.setStateFromBytes(b"\x0a\xc8")  # dimmer=10, white=200
+
+    dimmer_ctrl = controls[0]
+    await connected_casambi.setControlValue(unit, dimmer_ctrl, 0x42)
+
+    args, _ = connected_casambi._casaClient.send.call_args
+    pkt = args[0]
+    assert pkt[-2] == 0x42  # dimmer updated
+    assert pkt[-1] == 0xC8  # white unchanged

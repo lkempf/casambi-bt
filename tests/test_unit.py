@@ -560,3 +560,47 @@ def test_unit_state_unknown_controls_reset() -> None:
     controls = unit.state.unknown_controls
     assert len(controls) == 1
     assert controls[0][2] == 0x02
+
+
+def test_getStateAsBytes_preserves_unknown_control_current_value() -> None:
+    """getStateAsBytes re-uses the last received value for UNKNOWN controls."""
+    unit = _make_unit(
+        [
+            UnitControl(
+                type=UnitControlType.UNKNOWN,
+                offset=0,
+                length=8,
+                default=0,
+                readonly=False,
+            )
+        ],
+        state_length=1,
+    )
+
+    # Seed the unit with a known raw state — this stores value 0x2A in unknown_controls.
+    unit.setStateFromBytes(b"\x2a")
+
+    # Calling getStateAsBytes with an empty UnitState should NOT revert to default (0).
+    state = UnitState()
+    data = unit.getStateAsBytes(state)
+    assert data == b"\x2a"
+
+
+def test_getStateAsBytes_uses_default_when_no_state() -> None:
+    """getStateAsBytes falls back to control.default when there is no prior state."""
+    unit = _make_unit(
+        [
+            UnitControl(
+                type=UnitControlType.UNKNOWN,
+                offset=0,
+                length=8,
+                default=0xBE,
+                readonly=False,
+            )
+        ],
+        state_length=1,
+    )
+    # No setStateFromBytes called — _state is None.
+    state = UnitState()
+    data = unit.getStateAsBytes(state)
+    assert data == bytes([0xBE])

@@ -28,7 +28,7 @@ from ._operation import (
     OperationsContextClassic,
     OperationsContextEvolution,
 )
-from ._unit import Group, Scene, Unit, UnitControlType, UnitState
+from ._unit import Group, Scene, Unit, UnitControl, UnitControlType, UnitState
 from .errors import ConnectionStateError
 
 
@@ -240,6 +240,45 @@ class Casambi:
         else:
             stateBytes = target.getStateAsBytes(state)
             await self._send(target, stateBytes, OpCode.SetState)
+
+    async def setControlValue(
+        self, unit: Unit, control: UnitControl, value: int
+    ) -> None:
+        """Set a single control's value and send the updated state.
+
+        The state is built from the unit's current raw state bytes with only
+        the bits described by ``control`` overwritten.  All other controls —
+        including UNKNOWN ones — remain unchanged.
+
+        :param unit: The target unit.
+        :param control: A :class:`UnitControl` from ``unit.unitType.controls``.
+        :param value: Raw integer value to write into the control's bit field.
+        :raises BluetoothError: An error occurred in the bluetooth stack.
+        """
+        if unit.state is not None and unit.state.raw_state is not None:
+            raw = bytearray(unit.state.raw_state)
+        else:
+            raw = bytearray(unit.unitType.stateLength)
+
+        # Clear the target bits then write the new value (little-endian bytes).
+        byte_start = control.offset // 8
+        bit_start = control.offset % 8
+        n_bytes = (control.length + bit_start + 7) // 8
+
+        current = int.from_bytes(
+            raw[byte_start : byte_start + n_bytes], byteorder="little"
+        )
+        mask = ((1 << control.length) - 1) << bit_start
+        current = (current & ~mask) | (
+            (value & ((1 << control.length) - 1)) << bit_start
+        )
+        raw[byte_start : byte_start + n_bytes] = current.to_bytes(
+            n_bytes, byteorder="little"
+        )
+
+        state_bytes = bytes(raw)
+        await self._send(unit, state_bytes, OpCode.SetState)
+        unit.setStateFromBytes(state_bytes)
 
     async def setLevel(self, target: Unit | Group | None, level: int) -> None:
         """Set the level (brightness) for one or multiple units.
