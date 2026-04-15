@@ -18,6 +18,7 @@ from CasambiBt._network import (
     Network,
     _NetworkSession,
 )
+from CasambiBt._unit import UnitType
 from CasambiBt.errors import (
     AuthenticationError,
     NetworkNotFoundError,
@@ -275,7 +276,9 @@ async def test_load_session_and_types(network: Network, cache: Cache):
         keyID=1,
         expires=datetime.now(UTC) + timedelta(days=1),
     )
-    unit_types = {1: (None, datetime.now(UTC))}
+    unit_types: dict[int, tuple[UnitType | None, datetime]] = {
+        1: (None, datetime.now(UTC))
+    }
 
     async with cache as cache_path:
         await (cache_path / SESSION_CACHE_FILE).write_bytes(pickle.dumps(session))
@@ -293,7 +296,9 @@ async def test_load_session_and_types(network: Network, cache: Cache):
 
 async def test_load_type_cache_correct_version(network: Network, cache: Cache):
     """Test that a correctly versioned cache is accepted."""
-    unit_types = {42: (None, datetime.now(UTC))}
+    unit_types: dict[int, tuple[UnitType | None, datetime]] = {
+        42: (None, datetime.now(UTC))
+    }
     async with cache as cache_path:
         await (cache_path / TYPES_CACHE_FILE).write_bytes(
             pickle.dumps((TYPES_CACHE_VERSION, unit_types))
@@ -305,7 +310,9 @@ async def test_load_type_cache_correct_version(network: Network, cache: Cache):
 
 async def test_load_type_cache_outdated_version(network: Network, cache: Cache):
     """Test that an outdated cache version is discarded."""
-    unit_types = {99: (None, datetime.now(UTC))}
+    unit_types: dict[int, tuple[UnitType | None, datetime]] = {
+        99: (None, datetime.now(UTC))
+    }
     async with cache as cache_path:
         await (cache_path / TYPES_CACHE_FILE).write_bytes(
             pickle.dumps((TYPES_CACHE_VERSION - 1, unit_types))
@@ -317,7 +324,9 @@ async def test_load_type_cache_outdated_version(network: Network, cache: Cache):
 
 async def test_load_type_cache_legacy_unversioned(network: Network, cache: Cache):
     """Test that a legacy plain-dict cache (no version tuple) is discarded."""
-    unit_types = {7: (None, datetime.now(UTC))}
+    unit_types: dict[int, tuple[UnitType | None, datetime]] = {
+        7: (None, datetime.now(UTC))
+    }
     async with cache as cache_path:
         # Write a legacy payload — plain dict, no version wrapper
         await (cache_path / TYPES_CACHE_FILE).write_bytes(pickle.dumps(unit_types))
@@ -328,7 +337,9 @@ async def test_load_type_cache_legacy_unversioned(network: Network, cache: Cache
 
 async def test_save_and_reload_type_cache(network: Network, cache: Cache):
     """Test that the type cache save/reload roundtrip preserves data."""
-    unit_types = {5: (None, datetime.now(UTC))}
+    unit_types: dict[int, tuple[UnitType | None, datetime]] = {
+        5: (None, datetime.now(UTC))
+    }
     network._unitTypes = unit_types
 
     await network._saveTypeCache()
