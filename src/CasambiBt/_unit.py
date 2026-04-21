@@ -59,6 +59,12 @@ class UnitControlType(Enum, metaclass=_DeprecatingMeta):
     SENSOR = 9
     """A sensor value of the light."""
 
+    PRESENCE = 11
+    """Binary presence/occupancy value (0 = absent, ≥1 = present). Raw 2-bit integer."""
+
+    LUX = 12
+    """Illuminance in lux. Raw 12-bit integer (0–4095)."""
+
     UNIMPLEMENTED = 98
     """Control type exists in the protocol but is not yet implemented in this library."""
 
@@ -144,6 +150,8 @@ class UnitState:
         self._xy: tuple[float, float] | None = None
         self._slider: int | None = None
         self._onoff: bool | None = None
+        self._presence: int | None = None
+        self._lux: int | None = None
         self._raw_state: bytes | None = None
         self._unknown_controls: list[tuple[int, int, int]] = []
         self._sensors: dict[str, int] = {}
@@ -340,6 +348,40 @@ class UnitState:
     @onoff.deleter
     def onoff(self) -> None:
         self._onoff = None
+
+    PRESENCE_MIN: Final = 0
+    PRESENCE_MAX: Final = 3
+
+    @property
+    def presence(self) -> int | None:
+        """Return presence/occupancy raw value (0 = absent, ≥1 = present), or None."""
+        return self._presence
+
+    @presence.setter
+    def presence(self, value: int) -> None:
+        self._check_range(value, self.PRESENCE_MIN, self.PRESENCE_MAX)
+        self._presence = value
+
+    @presence.deleter
+    def presence(self) -> None:
+        self._presence = None
+
+    LUX_MIN: Final = 0
+    LUX_MAX: Final = 4095
+
+    @property
+    def lux(self) -> int | None:
+        """Return illuminance in lux (raw 12-bit value, 0–4095), or None."""
+        return self._lux
+
+    @lux.setter
+    def lux(self, value: int) -> None:
+        self._check_range(value, self.LUX_MIN, self.LUX_MAX)
+        self._lux = value
+
+    @lux.deleter
+    def lux(self) -> None:
+        self._lux = None
 
     def __repr__(self) -> str:
         return f"UnitState(dimmer={self.dimmer}, vertical={self.vertical}, rgb={self.rgb.__repr__()}, white={self.white}, temperature={self.temperature}, colorsource={self.colorsource}, xy={self.xy}, slider={self.slider}, onoff={self.onoff})"
@@ -561,6 +603,10 @@ class Unit:
                 scaledValue = state.slider >> scale
             elif c.type == UnitControlType.ONOFF and state.onoff is not None:
                 scaledValue = 1 if state.onoff else 0
+            elif c.type == UnitControlType.PRESENCE and state.presence is not None:
+                scaledValue = state.presence
+            elif c.type == UnitControlType.LUX and state.lux is not None:
+                scaledValue = state.lux
 
             # Use default if unsupported type or unset value in state
             else:
@@ -635,6 +681,10 @@ class Unit:
                 self._state.slider = cInt << scale
             elif c.type == UnitControlType.ONOFF:
                 self._state.onoff = cInt != 0
+            elif c.type == UnitControlType.PRESENCE:
+                self._state.presence = cInt
+            elif c.type == UnitControlType.LUX:
+                self._state.lux = cInt
             elif c.type == UnitControlType.SENSOR:
                 _LOGGER.debug(
                     f"Sensor control at {c.offset}: {cInt}. Unit type is {self.unitType.id}."
