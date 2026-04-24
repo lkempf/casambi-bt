@@ -475,7 +475,7 @@ class Casambi:
     def _dataCallback(
         self, packetType: IncomingPacketType, data: dict[str, Any] | SwitchEvent
     ) -> None:
-        self._logger.debug(f"Incomming data callback of type {str(packetType)}")
+        self._logger.debug(f"Incoming data callback of type {str(packetType)}")
         if packetType == IncomingPacketType.UnitState:
             unitData = cast(dict[str, Any], data)
             self._logger.debug(
@@ -550,13 +550,13 @@ class Casambi:
         """Register a new handler for switch events.
 
         This handler is called whenever a switch event is received.
-        The handler is supplied with a dictionary containing:
+        The handler is supplied with a SwitchEvent containing:
         - unit_id: The ID of the switch unit
-        - button: The button number that was pressed/released
-        - event: Either "button_press" or "button_release"
-        - message_type: The raw message type (0x08 or 0x10)
-        - flags: Additional flags from the message
-        - extra_data: Any additional data from the message
+        - button: The button number (1-based, = button_event_index + 1)
+        - button_event_index: 0-based index from the protocol
+        - event: A ButtonEventType (PRESS, RELEASE, HOLD, RELEASE_AFTER_HOLD)
+        - flags: Frame flags
+        - extra_data: Any additional payload bytes
 
         :param handler: The method to call when a switch event is received.
         """
