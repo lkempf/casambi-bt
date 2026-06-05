@@ -566,18 +566,25 @@ class Unit:
             # For UNKNOWN controls: preserve the most recently received value
             # so that a setControlValue() call does not silently reset controls
             # the caller did not intend to change.
+            elif c.type == UnitControlType.UNKNOWN and self._state:
+                scaledValue = next(
+                    (v for o, _l, v in self._state._unknown_controls if o == c.offset),
+                    c.default,
+                )
+            elif (
+                c.type == UnitControlType.UNIMPLEMENTED
+                and self._state
+                and self._state.raw_state
+            ):
+                byteLen = (c.length + c.offset % 8 - 1) // 8 + 1
+                cBytes = self._state.raw_state[c.offset // 8 : c.offset // 8 + byteLen]
+
+                # Extract c.Length bits form the byte string
+                cInt = int.from_bytes(cBytes, byteorder="little", signed=False)
+                cInt >>= c.offset % 8
+                scaledValue &= 2**c.length - 1
             else:
-                if c.type == UnitControlType.UNKNOWN and self._state:
-                    scaledValue = next(
-                        (
-                            v
-                            for o, _l, v in self._state._unknown_controls
-                            if o == c.offset
-                        ),
-                        c.default,
-                    )
-                else:
-                    scaledValue = c.default
+                scaledValue = c.default
 
             values.append((c.offset, c.length, scaledValue))
 
