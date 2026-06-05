@@ -65,12 +65,12 @@ class SwitchEventDecoder:
     the same origin.
     """
 
-    def __init__(self, logger: logging.Logger | None = None) -> None:
-        self._logger = logger or _LOGGER
+    def __init__(self) -> None:
         # (unit_id, button_event_index, origin) -> monotonic timestamp of first acceptance
         # Storing all three dimensions lets us suppress a retransmit of event A even
         # after event B (different origin) has already been accepted for the same button.
         self._seen_origins: dict[tuple[int, int, int], float] = {}
+        self._logger = _LOGGER
 
     def reset(self) -> None:
         """Clear all cached state (call on reconnect)."""
@@ -91,7 +91,7 @@ class SwitchEventDecoder:
     def decode(self, data: bytes, packet_seq: int) -> list[SwitchEvent]:
         """Parse decrypted type-7 packet payload and return deduplicated switch events."""
 
-        frames = parse_invocation_stream(data, logger=self._logger)
+        frames = parse_invocation_stream(data)
         events: list[SwitchEvent] = []
 
         for frame in frames:

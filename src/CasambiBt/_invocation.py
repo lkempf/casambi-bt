@@ -4,6 +4,8 @@ import logging
 from dataclasses import dataclass
 from typing import Final
 
+_LOGGER = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True, slots=True)
 class InvocationFrame:
@@ -36,9 +38,7 @@ class InvocationFrame:
 _FLAG_HAS_ORIGIN_HANDLE: Final[int] = 0x0200
 
 
-def parse_invocation_stream(
-    data: bytes, *, logger: logging.Logger | None = None
-) -> list[InvocationFrame]:
+def parse_invocation_stream(data: bytes) -> list[InvocationFrame]:
     """Parse decrypted packet type-7 payload into INVOCATION frames."""
 
     frames: list[InvocationFrame] = []
@@ -65,8 +65,8 @@ def parse_invocation_stream(
         origin_handle: int | None = None
         if flags & _FLAG_HAS_ORIGIN_HANDLE:
             if pos >= len(data):
-                if logger:
-                    logger.debug(
+                if _LOGGER:
+                    _LOGGER.debug(
                         "INVOCATION frame truncated at origin_handle (offset=%d flags=0x%04x).",
                         frame_offset,
                         flags,
@@ -77,8 +77,8 @@ def parse_invocation_stream(
 
         payload_len = flags & 0x3F
         if pos + payload_len > len(data):
-            if logger:
-                logger.debug(
+            if _LOGGER:
+                _LOGGER.debug(
                     "INVOCATION frame truncated at payload (offset=%d flags=0x%04x payload_len=%d remaining=%d).",
                     frame_offset,
                     flags,
@@ -103,8 +103,8 @@ def parse_invocation_stream(
             )
         )
 
-    if logger and pos != len(data):
-        logger.debug(
+    if _LOGGER and pos != len(data):
+        _LOGGER.debug(
             "INVOCATION stream: %d trailing bytes (parsed=%d total=%d).",
             len(data) - pos,
             pos,

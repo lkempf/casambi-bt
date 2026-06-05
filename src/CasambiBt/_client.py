@@ -74,7 +74,7 @@ class CasambiClient(ABC):
             else address_or_device
         )
         self._logger = logging.getLogger(__name__)
-        self._switch_decoder = SwitchEventDecoder(self._logger)
+        self._switch_decoder = SwitchEventDecoder()
         self._connectionState: ConnectionState = ConnectionState.NONE
         self._dataCallback = dataCallback
         self._disconnectedCallback = disonnectedCallback
@@ -543,7 +543,7 @@ class CasambiClientEvolution(CasambiClient):
             # In the future we might want to parse the revision and issue a warning if there is a mismatch.
             pass
         else:
-            self._logger.info(f"Packet type {packetType} not implemented. Ignoring!")
+            self._logger.debug(f"Packet type {packetType} not implemented. Ignoring!")
 
     def _parseUnitStates(self, data: bytes) -> None:
         self._logger.debug("Parsing incoming unit states...")
