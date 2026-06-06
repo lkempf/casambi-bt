@@ -63,6 +63,12 @@ class UnitControlType(Enum, metaclass=_DeprecatingMeta):
     """Cross-fade balance between the white and color channels (raw 6-bit value,
     0 = pure white, 63 = pure color)."""
 
+    PRESENCE = 11
+    """Binary presence/occupancy value (0 = absent, ≥1 = present). Raw 2-bit integer."""
+
+    LUX = 12
+    """Illuminance in lux. Raw 12-bit integer (0–4095)."""
+
     UNIMPLEMENTED = 98
     """Control type exists in the protocol but is not yet implemented in this library."""
 
@@ -149,6 +155,8 @@ class UnitState:
         self._slider: int | None = None
         self._onoff: bool | None = None
         self._white_balance: int | None = None
+        self._presence: int | None = None
+        self._lux: int | None = None
         self._raw_state: bytes | None = None
         self._unknown_controls: list[tuple[int, int, int]] = []
         self._sensors: dict[str, int] = {}
@@ -362,6 +370,40 @@ class UnitState:
     @white_balance.deleter
     def white_balance(self) -> None:
         self._white_balance = None
+
+    PRESENCE_MIN: Final = 0
+    PRESENCE_MAX: Final = 3
+
+    @property
+    def presence(self) -> int | None:
+        """Return presence/occupancy raw value (0 = absent, ≥1 = present), or None."""
+        return self._presence
+
+    @presence.setter
+    def presence(self, value: int) -> None:
+        self._check_range(value, self.PRESENCE_MIN, self.PRESENCE_MAX)
+        self._presence = value
+
+    @presence.deleter
+    def presence(self) -> None:
+        self._presence = None
+
+    LUX_MIN: Final = 0
+    LUX_MAX: Final = 4095
+
+    @property
+    def lux(self) -> int | None:
+        """Return illuminance in lux (raw 12-bit value, 0–4095), or None."""
+        return self._lux
+
+    @lux.setter
+    def lux(self, value: int) -> None:
+        self._check_range(value, self.LUX_MIN, self.LUX_MAX)
+        self._lux = value
+
+    @lux.deleter
+    def lux(self) -> None:
+        self._lux = None
 
     def __repr__(self) -> str:
         return f"UnitState(dimmer={self.dimmer}, vertical={self.vertical}, rgb={self.rgb.__repr__()}, white={self.white}, temperature={self.temperature}, colorsource={self.colorsource}, xy={self.xy}, slider={self.slider}, onoff={self.onoff})"
@@ -588,31 +630,35 @@ class Unit:
                 and state.white_balance is not None
             ):
                 scaledValue = state.white_balance
+            elif c.type == UnitControlType.PRESENCE and state.presence is not None:
+                scaledValue = state.presence
+            elif c.type == UnitControlType.LUX and state.lux is not None:
+                scaledValue = state.lux
 
             # Use default if unsupported type or unset value in state.
             # For UNKNOWN controls: preserve the most recently received value
             # so that a setControlValue() call does not silently reset controls
             # the caller did not intend to change.
-            # For WHITECOLORBALANCE: preserve the last received value so that
-            # brightness / colour changes do not reset the balance.
+            elif c.type == UnitControlType.UNKNOWN and self._state:
+                scaledValue = next(
+                    (v for o, _l, v in self._state._unknown_controls if o == c.offset),
+                    c.default,
+                )
+            elif (
+                c.type == UnitControlType.UNIMPLEMENTED
+                and self._state
+                and self._state.raw_state
+            ):
+                byteLen = (c.length + c.offset % 8 - 1) // 8 + 1
+                cBytes = self._state.raw_state[c.offset // 8 : c.offset // 8 + byteLen]
+
+                # Extract c.Length bits form the byte string
+                cInt = int.from_bytes(cBytes, byteorder="little", signed=False)
+                cInt >>= c.offset % 8
+                cInt &= 2**c.length - 1
+                scaledValue = cInt
             else:
-                if c.type == UnitControlType.UNKNOWN and self._state:
-                    scaledValue = next(
-                        (
-                            v
-                            for o, _l, v in self._state._unknown_controls
-                            if o == c.offset
-                        ),
-                        c.default,
-                    )
-                elif (
-                    c.type == UnitControlType.WHITECOLORBALANCE
-                    and self._state
-                    and self._state.white_balance is not None
-                ):
-                    scaledValue = self._state.white_balance
-                else:
-                    scaledValue = c.default
+                scaledValue = c.default
 
             values.append((c.offset, c.length, scaledValue))
 
@@ -685,6 +731,10 @@ class Unit:
                 self._state.onoff = cInt != 0
             elif c.type == UnitControlType.WHITECOLORBALANCE:
                 self._state.white_balance = cInt
+            elif c.type == UnitControlType.PRESENCE:
+                self._state.presence = cInt
+            elif c.type == UnitControlType.LUX:
+                self._state.lux = cInt
             elif c.type == UnitControlType.SENSOR:
                 _LOGGER.debug(
                     f"Sensor control at {c.offset}: {cInt}. Unit type is {self.unitType.id}."
