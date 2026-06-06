@@ -582,7 +582,8 @@ class Unit:
                 # Extract c.Length bits form the byte string
                 cInt = int.from_bytes(cBytes, byteorder="little", signed=False)
                 cInt >>= c.offset % 8
-                scaledValue &= 2**c.length - 1
+                cInt &= 2**c.length - 1
+                scaledValue = cInt
             else:
                 scaledValue = c.default
 
