@@ -1,9 +1,22 @@
 import logging
-from binascii import b2a_hex as b2a
 from dataclasses import dataclass
 from enum import Enum, unique
+from time import monotonic
+from typing import Final
+
+from ._invocation import parse_invocation_stream
 
 _LOGGER = logging.getLogger(__name__)
+
+_BUTTON_EVENT_MIN: Final[int] = 29  # FunctionButtonEvent0
+_BUTTON_EVENT_MAX: Final[int] = 36  # FunctionButtonEvent7
+_INPUT_EVENT_MIN: Final[int] = 64  # FunctionNotifyInput0
+_INPUT_EVENT_MAX: Final[int] = 71  # FunctionNotifyInput7
+
+_TARGET_TYPE_BUTTON: Final[int] = 0x06
+_TARGET_TYPE_INPUT: Final[int] = 0x12
+
+_DEDUP_WINDOW_SECONDS: Final[float] = 0.5
 
 
 @unique
@@ -15,242 +28,177 @@ class ButtonEventType(Enum):
     UNKNOWN = 0xFFFF
 
 
-# TODO: Add message type enum.
-# TODO: Add action type enum.
-
-
 @dataclass(frozen=True, repr=True)
 class SwitchEvent:
-    message_type: int
-    button: int
+    button_event_index: int  # 0-based index from protocol (opcode - base)
+    button: int  # 1-based label = button_event_index + 1
     unit_id: int
-    action: int | None
+    target_type: int  # 0x06 = button stream, 0x12 = input stream
     event: ButtonEventType
     flags: int
     extra_data: bytes
 
 
-def parseSwitchEvents(data: bytes, packet_seq: int) -> list[SwitchEvent]:
-    """Parse switch event packet which contains multiple message types."""
+class SwitchEventDecoder:
+    """Stateful decoder that filters BLE retransmissions of switch events.
 
-    # Log complete packet structure with marker
-    _LOGGER.debug(
-        f"[CASAMBI_SWITCH_PACKET] Full data #{packet_seq}: hex={b2a(data)} len={len(data)}"
-    )
+    Wireless switches (e.g. EnOcean PTM215B) emit each physical event on two
+    streams in the same BLE packet:
+      - 0x06 (button stream): PRESS / RELEASE via origin & 0x02
+      - 0x12 (input stream):  PRESS / RELEASE / HOLD / RELEASE_AFTER_HOLD via payload[0]
 
-    # Special handling for message type 0x29 - not a switch event
-    if len(data) >= 1 and data[0] == 0x29:
-        _LOGGER.debug(f"Ignoring message type 0x29 (not a switch event): {b2a(data)}")
-        return []
+    Both streams are retransmitted up to 3 times.  A single physical action
+    therefore produces up to 6 raw frames.
 
-    pos = 0
-    oldPos = 0
-    switch_events_found = 0
-    all_messages_found = []
-    switch_events = []
+    Stream responsibilities:
+      - 0x06 is the authoritative source for PRESS and RELEASE events.
+      - 0x12 is used exclusively for HOLD and RELEASE_AFTER_HOLD events.
+        Its PRESS (0x01) and RELEASE (0x02) codes are ignored because the 0x12
+        stream sends code=0x02 during a long hold (before the HOLD code=0x09
+        arrives), which would cause a spurious RELEASE event.
 
-    try:
-        while pos <= len(data) - 3:
-            oldPos = pos
+    Retransmit deduplication uses the `origin` field from each INVOCATION frame
+    as the event identity: all retransmissions of the same physical action share
+    an identical `origin` value, while a new physical action always carries a
+    different `origin` (the device increments its sequence counter).  A 500 ms
+    time window prevents a stale entry from masking a future genuine event with
+    the same origin.
+    """
 
-            # Parse message header
-            message_type = data[pos]
-            flags = data[pos + 1]
-            length = ((data[pos + 2] >> 4) & 15) + 1
-            parameter = data[pos + 2]  # Full byte, not just lower 4 bits
-            pos += 3
+    def __init__(self) -> None:
+        # (unit_id, button_event_index, origin) -> monotonic timestamp of first acceptance
+        # Storing all three dimensions lets us suppress a retransmit of event A even
+        # after event B (different origin) has already been accepted for the same button.
+        self._seen_origins: dict[tuple[int, int, int], float] = {}
+        self._logger = _LOGGER
 
-            # Log every message found with detailed structure
-            _LOGGER.debug(
-                f"[CASAMBI_MSG_FOUND] At pos={oldPos}: type=0x{message_type:02x} flags=0x{flags:02x} "
-                f"len={length} param=0x{parameter:02x}"
-            )
+    def reset(self) -> None:
+        """Clear all cached state (call on reconnect)."""
+        self._seen_origins.clear()
 
-            # Sanity check: message type should be reasonable
-            if message_type > 0x80:
-                _LOGGER.debug(
-                    f"Skipping invalid message type 0x{message_type:02x} at position {oldPos}"
-                )
-                # Try to resync by looking for next valid message
-                pos = oldPos + 1
-                continue
+    def _is_retransmit(self, unit_id: int, button_index: int, origin: int) -> bool:
+        """Return True if this frame is a retransmit of a recently accepted event.
 
-            # Check if we have enough data for the payload
-            if pos + length > len(data):
-                _LOGGER.debug(
-                    f"Incomplete message at position {oldPos}. "
-                    f"Type: 0x{message_type:02x}, declared length: {length}, available: {len(data) - pos}"
-                )
-                break
+        Uses the protocol-level `origin` field as the event identity: all BLE
+        retransmissions of the same physical action share the same origin value,
+        while a new physical action always carries a different origin (the device
+        increments its sequence counter).  The time window guards against the edge
+        case where the same origin reappears after a very long gap.
+        """
+        ts = self._seen_origins.get((unit_id, button_index, origin))
+        return ts is not None and (monotonic() - ts) < _DEDUP_WINDOW_SECONDS
 
-            # Extract the payload
-            payload = data[pos : pos + length]
-            pos += length
+    def decode(self, data: bytes, packet_seq: int) -> list[SwitchEvent]:
+        """Parse decrypted type-7 packet payload and return deduplicated switch events."""
 
-            # Log the payload
-            _LOGGER.debug(
-                f"[CASAMBI_MSG_PAYLOAD] Type 0x{message_type:02x} payload: {b2a(payload)} "
-                f"(bytes {oldPos+3} to {oldPos+3+length-1})"
-            )
+        frames = parse_invocation_stream(data)
+        events: list[SwitchEvent] = []
 
-            # Track all messages
-            all_messages_found.append(
-                {
-                    "type": message_type,
-                    "pos": oldPos,
-                    "flags": flags,
-                    "param": parameter,
-                    "payload": b2a(payload),
-                }
-            )
+        for frame in frames:
+            target_type = frame.target & 0xFF
+            unit_id = frame.target >> 8
 
-            # Process based on message type
-            if message_type == 0x08 or message_type == 0x10:  # Switch/button events
-                switch_events_found += 1
+            if (
+                target_type == _TARGET_TYPE_BUTTON
+                and _BUTTON_EVENT_MIN <= frame.opcode <= _BUTTON_EVENT_MAX
+            ):
+                # Button stream: press/release encoded in bit 1 of origin low byte.
+                # Confirmed on PTM215B captures: is_release = (origin & 0x02) != 0
+                button_event_index = frame.opcode - _BUTTON_EVENT_MIN
+                is_release = bool(frame.origin & 0x02)
+                event = ButtonEventType.RELEASE if is_release else ButtonEventType.PRESS
 
-                # Button extraction differs between type 0x08 and type 0x10
-                if message_type == 0x08:
-                    # For type 0x08, the lower nibble is a code that maps to physical button id
-                    # Using formula: ((code + 2) % 4) + 1 based on reverse engineering findings
-                    code_nibble = parameter & 0x0F
-                    button = ((code_nibble + 2) % 4) + 1
-                    _LOGGER.debug(
-                        f"Type 0x08 button extraction: parameter=0x{parameter:02x}, code={code_nibble}, button={button}"
+                if self._is_retransmit(unit_id, button_event_index, frame.origin):
+                    self._logger.debug(
+                        "Suppressed retransmit (0x06): unit_id=%d button_index=%d event=%s origin=0x%04x",
+                        unit_id,
+                        button_event_index,
+                        event.name,
+                        frame.origin,
                     )
-                    full_message_data = data
-                elif message_type == 0x10:
-                    # For type 0x10, use existing logic
-                    button_lower = parameter & 0x0F
-                    button_upper = (parameter >> 4) & 0x0F
+                    continue
+                self._seen_origins[(unit_id, button_event_index, frame.origin)] = (
+                    monotonic()
+                )
 
-                    # Use upper 4 bits if lower 4 bits are 0, otherwise use lower 4 bits
-                    if button_lower == 0 and button_upper != 0:
-                        button = button_upper
-                        _LOGGER.debug(
-                            f"Type 0x10 button extraction: parameter=0x{parameter:02x}, using upper nibble, button={button}"
-                        )
-                    else:
-                        button = button_lower
-                        _LOGGER.debug(
-                            f"Type 0x10 button extraction: parameter=0x{parameter:02x}, using lower nibble, button={button}"
-                        )
-
-                    # For type 0x10 messages, we need to pass additional data beyond the declared payload
-                    # Extend to include at least 10 bytes from message start for state byte
-                    extended_end = min(oldPos + 11, len(data))
-                    full_message_data = data[oldPos:extended_end]
-
-                switch_events.append(
-                    _processSwitchMessage(
-                        message_type, flags, button, payload, full_message_data
+                events.append(
+                    SwitchEvent(
+                        button_event_index=button_event_index,
+                        button=button_event_index + 1,
+                        unit_id=unit_id,
+                        target_type=target_type,
+                        event=event,
+                        flags=frame.flags,
+                        extra_data=frame.payload,
                     )
                 )
-            elif message_type == 0x29:
-                # This shouldn't happen due to check above, but just in case
-                _LOGGER.debug("Ignoring embedded type 0x29 message")
-            elif message_type in [0x00, 0x06, 0x09, 0x1F, 0x2A]:
-                # Known non-switch message types - log at debug level
-                _LOGGER.debug(f"Non-switch message type 0x{message_type:02x}")
-            else:
-                # Unknown message types - log at info level
-                _LOGGER.info(f"Unknown message type 0x{message_type:02x}")
 
-            oldPos = pos
+            elif (
+                target_type == _TARGET_TYPE_INPUT
+                and _INPUT_EVENT_MIN <= frame.opcode <= _INPUT_EVENT_MAX
+            ):
+                # Input stream: payload[0] is the event type directly.
+                # Confirmed on PTM215B: 0x01=PRESS, 0x02=RELEASE, 0x09=HOLD, 0x0C=RELEASE_AFTER_HOLD
+                # PRESS and RELEASE are ignored here — 0x06 is authoritative for those.
+                # 0x12 sends code=0x02 during long holds before HOLD arrives, causing
+                # a spurious RELEASE event if we don't filter it out.
+                if not frame.payload:
+                    self._logger.debug(
+                        "Input stream frame with empty payload, skipping."
+                    )
+                    continue
+                button_event_index = frame.opcode - _INPUT_EVENT_MIN
+                try:
+                    event = ButtonEventType(frame.payload[0])
+                except ValueError:
+                    self._logger.debug(
+                        "Unknown input event code 0x%02x in input stream frame.",
+                        frame.payload[0],
+                    )
+                    event = ButtonEventType.UNKNOWN
 
-    except IndexError:
-        _LOGGER.warning("Ran out of data while parsing switch event packet!")
-        _LOGGER.info(f"Remaining data {b2a(data[oldPos:])} in {b2a(data)}.")
+                if event in (ButtonEventType.PRESS, ButtonEventType.RELEASE):
+                    self._logger.debug(
+                        "Ignored 0x12 %s (authoritative source is 0x06): unit_id=%d button_index=%d",
+                        event.name,
+                        unit_id,
+                        button_event_index,
+                    )
+                    continue
 
-    # Log summary of all messages found
-    _LOGGER.debug(
-        f"[CASAMBI_PARSE_SUMMARY] Packet #{packet_seq}: Found {len(all_messages_found)} messages, "
-        f"{switch_events_found} switch events"
-    )
-    for i, msg in enumerate(all_messages_found):
-        _LOGGER.debug(
-            f"[CASAMBI_MSG_{i+1}] Type=0x{msg['type']:02x} Pos={msg['pos']} "
-            f"Flags=0x{msg['flags']:02x} Param=0x{msg['param']:02x} Payload={msg['payload']}"
-        )
-
-    if switch_events_found == 0:
-        _LOGGER.info(f"No switch events found in packet: {b2a(data)}")
-
-    return switch_events
-
-
-def _processSwitchMessage(
-    message_type: int, flags: int, button: int, payload: bytes, full_data: bytes
-) -> SwitchEvent:
-    """Process a switch/button message (types 0x08 or 0x10)."""
-
-    assert len(payload) > 0
-
-    # Extract unit_id based on message type
-    if message_type == 0x10 and len(payload) >= 3:
-        # Type 0x10: unit_id is at payload[2]
-        unit_id = payload[2]
-        extra_data = payload[3:] if len(payload) > 3 else b""
-    else:
-        # Standard parsing for other message types
-        unit_id = payload[0]
-        extra_data = b""
-        if len(payload) > 2:
-            extra_data = payload[2:]
-
-    # Extract action based on message type (action SHOULD be different for press vs release)
-    if len(payload) > 1:
-        # Action is at payload[1]
-        action = payload[1]
-    else:
-        action = None
-
-    event = ButtonEventType.UNKNOWN
-
-    # Different interpretation based on message type
-    if message_type == 0x08:
-        # Type 0x08: Use bit 1 of action for press/release
-        if action is not None:
-            is_release = (action >> 1) & 1
-            event = ButtonEventType.RELEASE if is_release else ButtonEventType.PRESS
-    elif message_type == 0x10:
-        # Type 0x10: The state byte is at position 9 (0-indexed) from message start
-        # This applies to all units, not just unit 31
-        # full_data for type 0x10 is the message data starting from position 0
-        state_pos = 9
-        if len(full_data) > state_pos:
-            state_byte = full_data[state_pos]
-            if state_byte in ButtonEventType:
-                event = ButtonEventType(state_byte)
-            else:
-                _LOGGER.debug(
-                    f"Type 0x10: Unknown state byte 0x{state_byte:02x} at message pos {state_pos}"
-                )
-        else:
-            # Fallback when message is too short
-            if len(extra_data) >= 1 and extra_data[0] == 0x12:
-                event = ButtonEventType.RELEASE
-                _LOGGER.debug(
-                    "Type 0x10: Using extra_data pattern for release detection"
-                )
-            else:
-                # Cannot determine state
-                _LOGGER.warning(
-                    f"Type 0x10 message missing state info, unit_id={unit_id}, payload={b2a(payload)}"
+                if self._is_retransmit(unit_id, button_event_index, frame.origin):
+                    self._logger.debug(
+                        "Suppressed retransmit (0x12): unit_id=%d button_index=%d event=%s origin=0x%04x",
+                        unit_id,
+                        button_event_index,
+                        event.name,
+                        frame.origin,
+                    )
+                    continue
+                self._seen_origins[(unit_id, button_event_index, frame.origin)] = (
+                    monotonic()
                 )
 
-    action_display = f"{action:#04x}" if action is not None else "N/A"
+                events.append(
+                    SwitchEvent(
+                        button_event_index=button_event_index,
+                        button=button_event_index + 1,
+                        unit_id=unit_id,
+                        target_type=target_type,
+                        event=event,
+                        flags=frame.flags,
+                        extra_data=frame.payload[1:],
+                    )
+                )
 
-    _LOGGER.info(
-        f"Switch event (type 0x{message_type:02x}): button={button}, unit_id={unit_id}, "
-        f"action={action_display} ({event}), flags=0x{flags:02x}"
-    )
+            else:
+                self._logger.debug(
+                    "Ignoring INVOCATION frame: opcode=0x%02x target_type=0x%02x.",
+                    frame.opcode,
+                    target_type,
+                )
 
-    # Log detailed info about type 0x08 messages (now processed, not filtered)
-    if message_type == 0x08:
-        _LOGGER.debug(
-            f"[CASAMBI_TYPE08_PROCESSED] Type 0x08 event processed: button={button}, unit_id={unit_id}, "
-            f"action={action_display}, event={event}, flags=0x{flags:02x}, "
-            f"payload={b2a(payload)}, extra_data={b2a(extra_data) if extra_data else 'none'}"
-        )
+        if not events:
+            self._logger.debug("No switch events found in packet #%s.", packet_seq)
 
-    return SwitchEvent(message_type, button, unit_id, action, event, flags, extra_data)
+        return events

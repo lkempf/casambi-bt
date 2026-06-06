@@ -20,7 +20,7 @@ from bleak_retry_connector import (
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric import ec
 
-from CasambiBt._switch import parseSwitchEvents
+from CasambiBt._switch import SwitchEventDecoder
 
 from ._constants import (
     CASA_AUTH_CHAR_UUID,
@@ -74,6 +74,7 @@ class CasambiClient(ABC):
             else address_or_device
         )
         self._logger = logging.getLogger(__name__)
+        self._switch_decoder = SwitchEventDecoder()
         self._connectionState: ConnectionState = ConnectionState.NONE
         self._dataCallback = dataCallback
         self._disconnectedCallback = disonnectedCallback
@@ -250,6 +251,7 @@ class CasambiClient(ABC):
                 self._logger.debug("Failed to disconnect BleakClient.", exc_info=True)
 
         self._connectionState = ConnectionState.NONE
+        self._switch_decoder.reset()
         self._logger.info("Disconnected.")
 
 
@@ -530,7 +532,9 @@ class CasambiClientEvolution(CasambiClient):
         if packetType == IncomingPacketType.UnitState:
             self._parseUnitStates(packetContents[1:])
         elif packetType == IncomingPacketType.SwitchEvent:
-            for s in parseSwitchEvents(packetContents[1:], self._inPacketCount):
+            for s in self._switch_decoder.decode(
+                packetContents[1:], self._inPacketCount
+            ):
                 self._dataCallback(IncomingPacketType.SwitchEvent, s)
         elif packetType == IncomingPacketType.NetworkConfig:
             # We don't care about the config the network thinks it has.
@@ -542,6 +546,7 @@ class CasambiClientEvolution(CasambiClient):
             self._logger.debug(f"Packet type {packetType} not implemented. Ignoring!")
 
     def _parseUnitStates(self, data: bytes) -> None:
+        self._logger.debug("Parsing incoming unit states...")
         self._logger.debug(f"Incoming unit state: {b2a(data)}")
 
         pos = 0
