@@ -158,6 +158,7 @@ class CasambiClient:
         await self._activityLock.acquire()
         try:
             # Initiate communication with device
+            await self._gattClient.get_services()
             firstResp = await self._gattClient.read_gatt_char(CASA_AUTH_CHAR_UUID)
             self._logger.debug(f"Got {b2a(firstResp)}")
 
