@@ -241,8 +241,13 @@ class CasambiClient(ABC):
         self._logger.info("Disconnecting...")
 
         if self._callbackTask is not None:
-            self._callbackTask.cancel()
+            callback_task = self._callbackTask
             self._callbackTask = None
+            callback_task.cancel()
+            try:
+                await callback_task
+            except asyncio.CancelledError:
+                pass
 
         if self._gattClient is not None and self._gattClient.is_connected:
             try:
@@ -317,22 +322,25 @@ class CasambiClientEvolution(CasambiClient):
                     await asyncio.sleep(0.5)
             self._logger.debug(f"Got {b2a(firstResp)}")
 
-            # Check type and protocol version
-            if not (
-                firstResp[0] == 0x1 and firstResp[1] == self._network.protocolVersion
-            ):
-                if (
-                    firstResp[0] == 0x1
-                    and firstResp[1] == 0x2B
-                    and self._network.protocolVersion == 11
-                ):
-                    # This is what happens for protocol version 11 so skip the error.
-                    # TODO: Implement proper handling after understanding this behavior.
-                    pass
-                else:
-                    self._logger.error(
-                        "Unexpected answer from device! Wrong device or protocol version? Trying to continue."
+            # Never continue with a malformed initial authentication response.
+            # The parsed nonce is used to authenticate the session; accepting an
+            # unexpected packet poisons the remainder of the handshake.
+            minimum_response_length = 2 + struct.calcsize(">BHH16s")
+            valid_response = (
+                len(firstResp) >= minimum_response_length
+                and firstResp[0] == 0x1
+                and (
+                    firstResp[1] == self._network.protocolVersion
+                    or (
+                        firstResp[1] == 0x2B
+                        and self._network.protocolVersion == 11
                     )
+                )
+            )
+            if not valid_response:
+                raise ProtocolError(
+                    "Unexpected initial authentication response from device"
+                )
 
             # Parse device info
             self._mtu, self._unit, self._flags, self._nonce = struct.unpack_from(
@@ -501,6 +509,9 @@ class CasambiClientEvolution(CasambiClient):
         except InvalidSignature:
             self._logger.fatal("Invalid signature for auth response!")
             self._connectionState = ConnectionState.ERROR
+            # Wake authenticate() immediately so it can raise ProtocolError and
+            # hand control back to the reconnect loop instead of waiting 15 s.
+            self._notifySignal.set()
             return
 
         # TODO: Verify Digest 2 (to compare with response from device); SHA256(key.key||self pubKey point||self._key)
