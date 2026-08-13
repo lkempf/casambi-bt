@@ -72,10 +72,16 @@ class Cache:
     async def __aenter__(self) -> Path:
         await _cacheLock.acquire()
 
-        if self._uuid is None:
-            raise ValueError("UUID not set.")
-
+        # Everything after the acquire must release the lock on any failure.
+        # BaseException (not Exception) because asyncio.CancelledError derives
+        # from BaseException: the awaits below are cancellation points, and a
+        # caller wrapping us in asyncio.timeout() would otherwise leak the
+        # global lock permanently, deadlocking every later cache access for
+        # the lifetime of the process.
         try:
+            if self._uuid is None:
+                raise ValueError("UUID not set.")
+
             await self._ensureCacheValid()
 
             cacheDir = Path(self._cachePath / self._uuid)
@@ -85,7 +91,7 @@ class Cache:
 
             _LOGGER.debug("Returning cache path %s for id %s.", cacheDir, self._uuid)
             return cacheDir
-        except Exception:
+        except BaseException:
             _cacheLock.release()
             raise
 
