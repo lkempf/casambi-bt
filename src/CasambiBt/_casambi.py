@@ -50,6 +50,7 @@ class Casambi:
         self._unitChangedCallbacks: list[Callable[[Unit], None]] = []
         self._switchEventCallbacks: list[Callable[[SwitchEvent], None]] = []
         self._disconnectCallbacks: list[Callable[[], None]] = []
+        self._connectionLock = asyncio.Lock()
 
         self._logger = logging.getLogger(__name__)
         self._opContext: OperationsContext
@@ -175,14 +176,17 @@ class Casambi:
         """
 
         self._checkNetwork()
-        if self._casaClient is None:
-            raise ConnectionStateError(
-                ConnectionState.CONNECTED,
-                ConnectionState.NONE,
-                "Reconnect only possible after initial connection and before disconnect.",
-            )
-        await self._casaClient.disconnect()
-        await self._connectClient(addr_or_device)
+        async with self._connectionLock:
+            if self._casaClient is None:
+                raise ConnectionStateError(
+                    ConnectionState.CONNECTED,
+                    ConnectionState.NONE,
+                    "Reconnect only possible after initial connection and before disconnect.",
+                )
+            if self.connected:
+                return
+            await self._casaClient.disconnect()
+            await self._connectClient(addr_or_device)
 
     async def _connectClient(self, addr_or_device: str | BLEDevice) -> None:
         """Initiate the bluetooth connection."""
@@ -528,7 +532,7 @@ class Casambi:
         except ConnectionStateError as exc:
             if exc.got == ConnectionState.NONE:
                 self._logger.info("Trying to reconnect broken connection once.")
-                await self._connectClient(self._casaClient._address_or_devive)
+                await self.reconnect(self._casaClient._address_or_devive)
                 await self._casaClient.send(opPkt)
             else:
                 raise exc

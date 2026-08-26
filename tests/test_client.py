@@ -253,6 +253,20 @@ async def test_send_success(client):
     )
 
 
+async def test_send_not_connected_raises_connection_state_error(client):
+    client._connectionState = ConnectionState.AUTHENTICATED
+    client._gattClient = AsyncMock()
+    client._nonce = b"1234567890123456"
+    client._encryptor = MagicMock()
+    client._encryptor.encryptThenMac.return_value = b"encrypted_payload"
+    client._gattClient.write_gatt_char.side_effect = BleakError("Not connected")
+
+    with pytest.raises(ConnectionStateError):
+        await client.send(b"\x01\x02")
+
+    assert client._connectionState == ConnectionState.NONE
+
+
 async def test_send_wrong_state(client):
     client._connectionState = ConnectionState.CONNECTED
     with pytest.raises(ConnectionStateError):
