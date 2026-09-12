@@ -2,6 +2,7 @@ import struct
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from bleak.exc import BleakError
 
 from CasambiBt._client import CasambiClientClassic
 from CasambiBt._constants import (
@@ -14,7 +15,11 @@ from CasambiBt._constants import (
     IncomingPacketType,
 )
 from CasambiBt._network import Network
-from CasambiBt.errors import ProtocolError, UnsupportedProtocolVersion
+from CasambiBt.errors import (
+    ConnectionStateError,
+    ProtocolError,
+    UnsupportedProtocolVersion,
+)
 
 
 @pytest.fixture
@@ -195,6 +200,20 @@ async def test_sendInternal_manager(client):
     args = client._gattClient.write_gatt_char.call_args[0]
     assert args[0] == CASA_AUTH_CHAR_UUID
     assert args[1].startswith(b"\x03")
+
+
+async def test_send_internal_not_connected_raises_connection_state_error(client):
+    client._connectionState = ConnectionState.AUTHENTICATED
+    client._gattClient = AsyncMock()
+    client._connhash = b"12345678"
+    client._managerEncryptor = MagicMock()
+    client._managerEncryptor.digest.return_value = b"encrypted_packet"
+    client._gattClient.write_gatt_char.side_effect = BleakError("Not connected")
+
+    with pytest.raises(ConnectionStateError):
+        await client._sendInternal(b"\x12\x34")
+
+    assert client._connectionState == ConnectionState.NONE
 
 
 async def test_sendInternal_visitor(

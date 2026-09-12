@@ -625,13 +625,15 @@ class CasambiClientEvolution(CasambiClient):
         try:
             await self._gattClient.write_gatt_char(char, encPacket)
         except BleakError as e:
-            if e.args[0] == "Not connected":
+            if e.args and e.args[0] == "Not connected":
                 self._logger.debug(
                     "Unexpected write while disconnected.", exc_info=True
                 )
                 self._connectionState = ConnectionState.NONE
-            else:
-                raise BluetoothError from e
+                raise ConnectionStateError(
+                    ConnectionState.AUTHENTICATED, ConnectionState.NONE
+                ) from e
+            raise BluetoothError from e
 
     def _getNonce(self, id: int | bytes) -> bytes:
         if isinstance(id, int):
@@ -850,10 +852,12 @@ class CasambiClientClassic(CasambiClient):
         try:
             await self._gattClient.write_gatt_char(CASA_AUTH_CHAR_UUID, outPacket)
         except BleakError as e:
-            if e.args[0] == "Not connected":
+            if e.args and e.args[0] == "Not connected":
                 self._logger.debug(
                     "Unexpected write while disconnected.", exc_info=True
                 )
                 self._connectionState = ConnectionState.NONE
-            else:
-                raise BluetoothError from e
+                raise ConnectionStateError(
+                    ConnectionState.AUTHENTICATED, ConnectionState.NONE
+                ) from e
+            raise BluetoothError from e
