@@ -337,7 +337,7 @@ class CasambiClientEvolution(CasambiClient):
                 if (
                     firstResp[0] == 0x1
                     and firstResp[1] == 0x2B
-                    and self._network.protocolVersion == 11
+                    and self._network.protocolVersion in [10, 11]
                 ):
                     # This is what happens for protocol version 11 so skip the error.
                     # TODO: Implement proper handling after understanding this behavior.
