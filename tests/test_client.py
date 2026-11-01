@@ -60,6 +60,49 @@ def test_init_valid(mock_network, data_callback, disconnected_callback):
     assert client._connectionState == ConnectionState.NONE
 
 
+def test_disconnect_marks_offline_before_callback(client, disconnected_callback):
+    client._connectionState = ConnectionState.AUTHENTICATED
+    observed = []
+    disconnected_callback.side_effect = lambda: observed.append(client._connectionState)
+    client._on_disconnect(MagicMock())
+    assert observed == [ConnectionState.NONE]
+
+
+@pytest.mark.skipif(
+    not hasattr(asyncio, "eager_task_factory"), reason="Requires Python 3.12+"
+)
+async def test_disconnect_allows_eager_reconnect(client):
+    from CasambiBt import Casambi
+
+    casa = Casambi.__new__(Casambi)
+    casa._casaNetwork = MagicMock()
+    casa._casaClient = client
+    casa._connectionLock = asyncio.Lock()
+    client.disconnect = AsyncMock()
+
+    async def connect(_device):
+        client._connectionState = ConnectionState.AUTHENTICATED
+
+    casa._connectClient = AsyncMock(side_effect=connect)
+    tasks = []
+
+    def disconnected():
+        tasks.append(
+            asyncio.Task(
+                casa.reconnect("fake-device"),
+                eager_start=True,
+                loop=asyncio.get_running_loop(),
+            )
+        )
+
+    client._disconnectedCallback = disconnected
+    client._connectionState = ConnectionState.AUTHENTICATED
+    client._on_disconnect(MagicMock())
+    await asyncio.gather(*tasks)
+    casa._connectClient.assert_awaited_once_with("fake-device")
+    assert casa.connected
+
+
 def test_init_unsupported_version(mock_network, data_callback, disconnected_callback):
     mock_network.protocolVersion = MIN_EVO_VERSION - 1
     with pytest.raises(UnsupportedProtocolVersion):

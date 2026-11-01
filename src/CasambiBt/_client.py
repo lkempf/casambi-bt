@@ -151,12 +151,14 @@ class CasambiClient(ABC):
         self._connectionState = ConnectionState.CONNECTED
 
     def _on_disconnect(self, client: BleakClient) -> None:
-        if self._connectionState != ConnectionState.NONE:
+        previous_state = self._connectionState
+        # Callbacks may start a reconnect eagerly, before this method returns.
+        self._connectionState = ConnectionState.NONE
+        if previous_state != ConnectionState.NONE:
             self._logger.info(f"Received disconnect callback from {self.address}")
-        if self._connectionState == ConnectionState.AUTHENTICATED:
+        if previous_state == ConnectionState.AUTHENTICATED:
             self._logger.debug("Executing disconnect callback.")
             self._disconnectedCallback()
-        self._connectionState = ConnectionState.NONE
 
     def _queueCallback(self, handle: BleakGATTCharacteristic, data: bytes) -> None:
         self._callbackQueue.put_nowait((handle, data))
