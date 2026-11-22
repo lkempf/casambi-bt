@@ -342,6 +342,23 @@ class CasambiClientEvolution(CasambiClient):
                     # This is what happens for protocol version 11 so skip the error.
                     # TODO: Implement proper handling after understanding this behavior.
                     pass
+                elif (
+                    firstResp[0] == 0x1
+                    and firstResp[1] >= FIRST_EVO_VERSION
+                    and self._network.protocolVersion >= FIRST_EVO_VERSION
+                ):
+                    # Device and (cloud-sourced) network data disagree on the exact
+                    # Evolution protocol version. The stored version is only used to
+                    # pick the client implementation, and both values select the same
+                    # Evolution client, so the key exchange below is identical.
+                    # Seen in the field with network data saying 11 while the device
+                    # answers 0x0a (10); treat it as a warning, not a failure.
+                    self._logger.warning(
+                        "Device reported protocol version %i but network data says %i."
+                        " Both are Evolution, continuing.",
+                        firstResp[1],
+                        self._network.protocolVersion,
+                    )
                 else:
                     # Silently continuing here can lead to invalid operations in the state machine
                     # See https://github.com/lkempf/casambi-bt-hass/issues/152
