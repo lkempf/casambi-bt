@@ -5,7 +5,7 @@ import pathlib
 import pickle
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -21,7 +21,6 @@ from CasambiBt.errors import (
     AuthenticationError,
     NetworkNotFoundError,
     NetworkOnlineUpdateNeededError,
-    NetworkUpdateError,
 )
 
 
@@ -245,24 +244,30 @@ async def test_update_force_offline_no_cache(network: Network):
         await network.update(forceOffline=True)
 
 
-async def test_update_api_gone_invalidates_cache(
+async def test_update_api_gone_drops_only_session(
     network: Network, mock_client: AsyncMock, cache: Cache
 ):
-    """Test that a 410 GONE response during update invalidates the cache."""
+    """A 410 GONE drops the session but keeps the network for offline use."""
     network._session = _NetworkSession(
         "sess", "net", True, 1, datetime.now(UTC) + timedelta(days=1)
     )
     network._id = "test-net"
+    async with cache as cache_path:
+        await (cache_path / SESSION_CACHE_FILE).write_bytes(b"x")
+        await (cache_path / "test-net.json").write_text(
+            json.dumps({"network": {"revision": 1}})
+        )
 
     mock_client.put.return_value = httpx.Response(410)  # GONE
 
-    with patch.object(
-        cache, "invalidateCache", new_callable=AsyncMock
-    ) as mock_invalidate:
-        with pytest.raises(NetworkUpdateError):
-            await network.update()
+    with pytest.raises(AuthenticationError) as err:
+        await network.update()
 
-        mock_invalidate.assert_called_once()
+    assert err.value.status_code == 410
+    assert network._session is None
+    async with cache as cache_path:
+        assert not await (cache_path / SESSION_CACHE_FILE).exists()
+        assert await (cache_path / "test-net.json").exists()
 
 
 async def test_load_session_and_types(network: Network, cache: Cache):

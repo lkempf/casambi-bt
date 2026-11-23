@@ -35,26 +35,37 @@ class KeyStore:
                 self._logger.debug("No cached keys.")
                 return
             key_bytes = await (cachePath / KEY_CACHE_FILE).read_bytes()
-            self._keys = pickle.loads(key_bytes)
-            self._logger.debug(f"Loaded {len(self._keys)} keys.")
+            try:
+                self._keys = pickle.loads(key_bytes)
+            except Exception:
+                # The keys are part of the network configuration and are
+                # restored from it on the next update.
+                self._logger.warning("Key cache is unreadable.", exc_info=True)
+                self._keys = []
+                return
+            self._logger.debug("Loaded %i keys.", len(self._keys))
 
     async def _save(self) -> None:
         self._logger.info("Saving keys...")
         async with self._cache as cachePath:
             key_bytes = pickle.dumps(self._keys)
             await (cachePath / KEY_CACHE_FILE).write_bytes(key_bytes)
-            self._logger.debug(f"Saved {len(self._keys)} keys.")
+            self._logger.debug("Saved %i keys.", len(self._keys))
 
     async def addKey(self, dict: dict) -> None:
+        if await self._addKeyInternal(dict):
+            await self._save()
+
+    async def _addKeyInternal(self, dict: dict) -> bool:
         if "id" not in dict:
             raise KeyError("id")
         id = int(dict["id"])
         if id < 0:
             raise ValueError("id")
 
-        if any(filter(lambda k: k.id == id, self._keys)):  # type: ignore
-            self._logger.debug(f"Key with id {id} already exists. Skipping...")
-            return
+        if any(k.id == id for k in self._keys):
+            self._logger.debug("Key with id %i already exists. Skipping...", id)
+            return False
 
         if "type" not in dict:
             raise KeyError("type")
@@ -76,15 +87,19 @@ class KeyStore:
             raise KeyError("key")
         try:
             key = binascii.a2b_hex(dict["key"])
-        except binascii.Error:
-            raise ValueError("key")
+        except binascii.Error as err:
+            raise ValueError("key") from err
 
         keyObj = Key(id, type, role, name, key)
         self._keys.append(keyObj)
-        self._logger.info(f"Added key {name} with role {role} to store.")
-        await self._save()
+        self._logger.info("Added key %s with role %i to store.", name, role)
+        return True
 
     async def setLegacyKey(self, key: str, isVisitor: bool) -> None:
+        if self._setLegacyKeyInternal(key, isVisitor):
+            await self._save()
+
+    def _setLegacyKeyInternal(self, key: str, isVisitor: bool) -> bool:
         keyRole = (
             CLASSIC_AUTH_LEVEL_VISITOR if isVisitor else CLASSIC_AUTH_LEVEL_MANAGER
         )
@@ -94,12 +109,38 @@ class KeyStore:
                 continue
             if k.role == keyRole:
                 if k.key == keyBytes:
-                    return
+                    return False
                 _ = self._keys.pop(i)
                 break
 
         self._keys.append(Key(-1, -1, keyRole, "legacy", keyBytes))
-        self._logger.info(f"Added legacy key with role {keyRole} to store.")
+        self._logger.info("Added legacy key with role %i to store.", keyRole)
+        return True
+
+    async def replaceKeys(
+        self,
+        keys: list[dict],
+        visitorKey: str | None = None,
+        managerKey: str | None = None,
+    ) -> None:
+        """Replace the stored keys with the keys of a network configuration.
+
+        Keys that changed or were removed from the network are updated, so a
+        rotated key never sticks in the cache. The keys are only saved when
+        they changed.
+        """
+        newStore = KeyStore(self._cache)
+        for k in keys:
+            await newStore._addKeyInternal(k)
+        if visitorKey:
+            newStore._setLegacyKeyInternal(visitorKey, True)
+        if managerKey:
+            newStore._setLegacyKeyInternal(managerKey, False)
+
+        if newStore._keys == self._keys:
+            return
+        self._keys = newStore._keys
+        self._logger.info("Updated keys. %i keys in store.", len(self._keys))
         await self._save()
 
     async def clear(self, save: bool = False) -> None:
