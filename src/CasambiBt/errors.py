@@ -27,8 +27,35 @@ class NetworkOnlineUpdateNeededError(NetworkUpdateError):
     pass
 
 
+class CloudUnavailableError(NetworkUpdateError):
+    """Exception that is raised when the Casambi cloud can't be used.
+
+    The cloud is unreachable or answers with an error that says nothing about
+    the credentials, e.g. maintenance (5xx) or a rate limit (403, 429).
+    ``status_code`` is the http status or ``None`` for a network error.
+    """
+
+    def __init__(self, message: str, status_code: int | None = None) -> None:
+        """Create a new `CloudUnavailableError`."""
+        self.status_code = status_code
+        super().__init__(message)
+
+
 class AuthenticationError(CasambiBtError):
-    """Excpetion that is raised when authentication to the network fails."""
+    """Exception that is raised when authentication to the network fails.
+
+    ``status_code`` is the http status of the rejected cloud login (usually
+    401) or ``None`` if the failure didn't come from the cloud.
+    """
+
+    def __init__(self, message: str = "", status_code: int | None = None) -> None:
+        """Create a new `AuthenticationError`."""
+        self.status_code = status_code
+        super().__init__(message)
+
+
+class OfflineBackupError(CasambiBtError):
+    """Exception that is raised when an offline backup is invalid or doesn't match."""
 
     pass
 
