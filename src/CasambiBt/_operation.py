@@ -29,6 +29,13 @@ _classicOpcodeMap: Final[dict[OpCode, dict[type, int]]] = {
 }
 
 
+def _checkId(id: int) -> int:
+    """Return the id if it fits into the one byte of the protocol."""
+    if not 0 <= id <= 0xFF:
+        raise ValueError(f"Id {id} doesn't fit into a target.")
+    return id
+
+
 class OperationsContext(ABC):
     def __init__(self) -> None:
         self._origin: int = 1
@@ -63,14 +70,11 @@ class OperationsContextEvolution(OperationsContext):
     def _getTarget(self, target: Unit | Group | Scene | None) -> int:
         targetCode = 0
         if isinstance(target, Unit):
-            assert target.deviceId <= 0xFF
-            targetCode = (target.deviceId << 8) | 0x01
+            targetCode = (_checkId(target.deviceId) << 8) | 0x01
         elif isinstance(target, Group):
-            assert target.groudId <= 0xFF
-            targetCode = (target.groudId << 8) | 0x02
+            targetCode = (_checkId(target.groudId) << 8) | 0x02
         elif isinstance(target, Scene):
-            assert target.sceneId <= 0xFF
-            targetCode = (target.sceneId << 8) | 0x04
+            targetCode = (_checkId(target.sceneId) << 8) | 0x04
         elif target is not None:
             raise TypeError(f"Unkown target type {type(target)}")
 
@@ -92,7 +96,12 @@ class OperationsContextClassic(OperationsContext):
             self._origin = 1
 
         # We always send origin, so set 0x40
-        flags = _classicOpcodeMap[op][type(target)] | 0x40
+        try:
+            flags = _classicOpcodeMap[op][type(target)] | 0x40
+        except KeyError as err:
+            raise ValueError(
+                f"{op.name} for {type(target).__name__} isn't supported by classic networks."
+            ) from err
         packet = bytearray(3)
 
         targetId = None
@@ -104,7 +113,7 @@ class OperationsContextClassic(OperationsContext):
             targetId = target.sceneId
 
         if targetId is not None:
-            packet += targetId.to_bytes(1)
+            packet += _checkId(targetId).to_bytes(1)
             flags |= 0x80
 
         packet[1] = flags
@@ -116,4 +125,4 @@ class OperationsContextClassic(OperationsContext):
         packet[0] = (len(packet) + 239) & 0xFF
 
         self._origin += 1
-        return packet
+        return bytes(packet)

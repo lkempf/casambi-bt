@@ -35,3 +35,16 @@ def isClassicNetwork(version: int) -> bool:
 
 CLASSIC_AUTH_LEVEL_MANAGER: Final = 3
 CLASSIC_AUTH_LEVEL_VISITOR: Final = 2
+
+
+def normalizeAddress(address: str) -> str:
+    """Return a mac address in the colon separated, upper case notation.
+
+    Accepts addresses with or without colons or dashes.
+
+    :raises ValueError: The address isn't a mac address.
+    """
+    digits = address.replace(":", "").replace("-", "").strip().upper()
+    if len(digits) != 12 or any(c not in "0123456789ABCDEF" for c in digits):
+        raise ValueError(f"Invalid mac address {address!r}.")
+    return ":".join(digits[i : i + 2] for i in range(0, 12, 2))

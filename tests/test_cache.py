@@ -125,3 +125,11 @@ async def test_invalidate_cache_no_uuid(tmp_path: pathlib.Path):
     c = Cache(tmp_path)
     with pytest.raises(ValueError, match="UUID not set"):
         await c.invalidateCache()
+
+
+async def test_cache_creates_missing_parents(tmp_path: pathlib.Path):
+    """The cache can live below directories that don't exist yet."""
+    cache = Cache(tmp_path / "missing" / "parents" / "cache")
+    await cache.setUuid("uuid")
+    async with cache as cache_path:
+        assert await cache_path.exists()

@@ -66,7 +66,7 @@ class Cache:
         # This is not a redunant condition. We may have deleted the cache.
         if not await self._cachePath.exists():
             _LOGGER.info("Creating new cache.")
-            await self._cachePath.mkdir(mode=0o700)
+            await self._cachePath.mkdir(mode=0o700, parents=True)
             await self._cacheVersionFile.write_text(str(CACHE_VERSION))
 
     async def __aenter__(self) -> Path:
@@ -81,7 +81,8 @@ class Cache:
             cacheDir = Path(self._cachePath / self._uuid)
             if not await cacheDir.exists():
                 _LOGGER.debug("Creating cache entry for id %s", self._uuid)
-                await cacheDir.mkdir()
+                # The entry holds the session and the keys of the network.
+                await cacheDir.mkdir(mode=0o700)
 
             _LOGGER.debug("Returning cache path %s for id %s.", cacheDir, self._uuid)
             return cacheDir

@@ -672,7 +672,6 @@ class Unit:
                 res[off // 8] |= valBytes[i]
                 off += 8 - off % 8
 
-        _LOGGER.debug(f"Packing {values.__repr__()} as {res}")
         return bytes(res)
 
     # TODO: Add tests for this method
@@ -721,7 +720,13 @@ class Unit:
                     cInt, c.min, c.max, c.length
                 )
             elif c.type == UnitControlType.COLORSOURCE:
-                self._state.colorsource = ColorSource(cInt)
+                try:
+                    self._state.colorsource = ColorSource(cInt)
+                except ValueError:
+                    # A source this library doesn't know, e.g. of a newer
+                    # firmware. Don't let it break the rest of the state.
+                    _LOGGER.debug("Unknown color source %i.", cInt)
+                    del self._state.colorsource
             elif c.type == UnitControlType.XY:
                 self._state.xy = UnitState.xy_from_int(cInt, c.length)
             elif c.type == UnitControlType.SLIDER:
@@ -737,12 +742,18 @@ class Unit:
                 self._state.lux = cInt
             elif c.type == UnitControlType.SENSOR:
                 _LOGGER.debug(
-                    f"Sensor control at {c.offset}: {cInt}. Unit type is {self.unitType.id}."
+                    "Sensor control at %i: %i. Unit type is %i.",
+                    c.offset,
+                    cInt,
+                    self.unitType.id,
                 )
             elif c.type == UnitControlType.UNKNOWN:
                 # Might be useful for implementing more state types
                 _LOGGER.debug(
-                    f"Value for unknown control type at {c.offset}: {cInt}. Unit type is {self.unitType.id}."
+                    "Value for unknown control type at %i: %i. Unit type is %i.",
+                    c.offset,
+                    cInt,
+                    self.unitType.id,
                 )
                 unknown_index = len(self._state._unknown_controls)
                 self._state._unknown_controls.append((c.offset, c.length, cInt))
@@ -759,10 +770,13 @@ class Unit:
             sensor_value = value[2]
             self._sensor_cache[packet_type] = sensor_value
             _LOGGER.debug(
-                f"EXT/Elements sensor update: packet_type={packet_type}, value={sensor_value}"
+                "EXT/Elements sensor update: packet_type=%i, value=%i",
+                packet_type,
+                sensor_value,
             )
 
-        _LOGGER.debug(f"Parsed {b2a(value)} to {self.state.__repr__()}")
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            _LOGGER.debug("Parsed %s to %r", b2a(value), self.state)
 
 
 @dataclass
