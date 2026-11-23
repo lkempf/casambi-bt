@@ -66,7 +66,7 @@ class Cache:
         # This is not a redunant condition. We may have deleted the cache.
         if not await self._cachePath.exists():
             _LOGGER.info("Creating new cache.")
-            await self._cachePath.mkdir(mode=0o700)
+            await self._cachePath.mkdir(mode=0o700, parents=True)
             await self._cacheVersionFile.write_text(str(CACHE_VERSION))
 
     async def __aenter__(self) -> Path:
