@@ -35,3 +35,34 @@ If you have problems connecting to the network please check that your network is
 ![Gateway settings](/doc/img/gateway.png)
 ![Network settings](/doc/img/network.png)
 ![Performance settings](/doc/img/perf.png)
+
+## Offline operation
+
+The library only needs the Casambi cloud to download the configuration of a
+network (units, groups, scenes and the keys of the network) and the types of
+the units. Everything is cached, and the bluetooth connection itself never
+needs the cloud.
+
+- `connect(..., preferCache=True)` uses the cached configuration without
+  contacting the cloud. Use `refreshNetwork(password)` afterwards to check for
+  a newer configuration; it is stored in the cache and used by the next
+  connect.
+- Without `preferCache` the cloud is asked first. Any cloud error other than a
+  rejected password (maintenance, rate limits, no internet) falls back to the
+  cache. Unit types are kept beyond their expiry while the cloud is
+  unreachable.
+- `AuthenticationError.status_code` and `CloudUnavailableError.status_code`
+  tell apart a rejected password from an unavailable cloud.
+
+### Offline backup
+
+`exportOfflineBackup()` returns everything needed to use a network without the
+cloud as a JSON serializable dict. `importOfflineBackup(backup)` restores it
+into the cache of a new installation, so a following connect works without the
+cloud.
+
+**The backup contains the keys of your network. Store it like a password**,
+e.g. as a file in your password manager.
+
+A restored network keeps working as long as its configuration and keys don't
+change. Changes made in the Casambi app need the cloud (or a new backup).
