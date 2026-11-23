@@ -17,6 +17,7 @@ _TARGET_TYPE_BUTTON: Final[int] = 0x06
 _TARGET_TYPE_INPUT: Final[int] = 0x12
 
 _DEDUP_WINDOW_SECONDS: Final[float] = 0.5
+_MAX_SEEN_ORIGINS: Final[int] = 64
 
 
 @unique
@@ -85,8 +86,17 @@ class SwitchEventDecoder:
         increments its sequence counter).  The time window guards against the edge
         case where the same origin reappears after a very long gap.
         """
+        now = monotonic()
+        # Forget entries outside of the window so the dict can't grow for the
+        # whole lifetime of a connection.
+        if len(self._seen_origins) > _MAX_SEEN_ORIGINS:
+            self._seen_origins = {
+                k: v
+                for k, v in self._seen_origins.items()
+                if now - v < _DEDUP_WINDOW_SECONDS
+            }
         ts = self._seen_origins.get((unit_id, button_index, origin))
-        return ts is not None and (monotonic() - ts) < _DEDUP_WINDOW_SECONDS
+        return ts is not None and (now - ts) < _DEDUP_WINDOW_SECONDS
 
     def decode(self, data: bytes, packet_seq: int) -> list[SwitchEvent]:
         """Parse decrypted type-7 packet payload and return deduplicated switch events."""

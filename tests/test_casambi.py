@@ -342,7 +342,8 @@ async def test_set_temperature(connected_casambi, mock_unit):
 
 
 async def test_set_color_xy_classic(connected_casambi_classic, mock_xy_unit):
-    with pytest.raises(KeyError):
+    """Unsupported commands of classic networks raise ValueError, not KeyError."""
+    with pytest.raises(ValueError, match="isn't supported by classic networks"):
         await connected_casambi_classic.setColorXY(mock_xy_unit, (0.5, 0.5))
 
 

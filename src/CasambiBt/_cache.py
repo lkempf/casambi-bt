@@ -81,7 +81,8 @@ class Cache:
             cacheDir = Path(self._cachePath / self._uuid)
             if not await cacheDir.exists():
                 _LOGGER.debug("Creating cache entry for id %s", self._uuid)
-                await cacheDir.mkdir()
+                # The entry holds the session and the keys of the network.
+                await cacheDir.mkdir(mode=0o700)
 
             _LOGGER.debug("Returning cache path %s for id %s.", cacheDir, self._uuid)
             return cacheDir
